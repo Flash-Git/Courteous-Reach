@@ -1,6 +1,7 @@
 pragma solidity ^0.4.24;
 
-contract Ownable {  
+contract Ownable {
+//OpenZeppelin's contract 
   address public owner;
 
   event OwnershipRenounced(address indexed previousOwner);
