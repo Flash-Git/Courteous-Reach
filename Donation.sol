@@ -4,34 +4,62 @@ contract Donator is Ownable {
 	
 	uint public contractBalance;
     
+    //Every address is a potential charity
 	mapping(address => charity) public charities;
-	//User profiles
-	mapping(address => profile) profiles;
+	//Every address has a donation profile
+	mapping(address => profile) public profiles;
     //Array of valid charities
    	address[] public validCharities;
 
-    struct profile{
-        address[5] charities;
-        uint8[5] share;
-        uint16 totalShares;
-        uint8 numOfCharities;
+	//Donations done with profile are split between the chosen charities based on shares        
+    struct profile {
+    	address[5] charities;//Charities on profile
+        uint8[5] share;//Shares per Charity
+        uint16 totalShares;//Gas efficient to keep track of total shares(?)
+        uint8 numOfCharities;//Gas efficient by knowing number of charities per profile
     }
     
+    //TODO Handle recognition
 	struct donator {
 		address addr;
-		mapping(address => token) tokens;
+		//uint amtDonated;
 	}
     
+    /* TODO Handle tokens 
 	struct token {
 		address addr;
 		string name;
 		string symbol;
 		bool valid;
-	}
-    
+	}*/
+
 	struct charity {
 		bool valid;
 		uint balance;
+	}
+
+	function validateCharity(address _charity) onlyOwner public {
+	    require(!charities[_charity].valid, "Charity already validated");
+		charities[_charity].valid = true;
+		validCharities.push(_charity);
+	}
+
+	function invalidateCharity(address _charity) onlyOwner public {
+	    require(charities[_charity].valid, "Charity not valid");
+		charities[_charity].valid = false;
+		validCharities.push(_charity);
+		if(validCharities.length==1){
+			delete validCharities[0];
+			return;
+		}
+		//Replace the invalid charity with the last one
+		for(uint i = 0; i < validCharities.length; i++){
+			if(validCharities[i]==_charity){
+				validCharities[i] = validCharities[validCharities.length-1];
+				delete validCharities[validCharities.length-1];
+				return;
+			}
+		}
 	}
 
 	function addCharityToProfile(address _charity, uint8 _share) public {
@@ -56,21 +84,67 @@ contract Donator is Ownable {
 		profiles[msg.sender].share[_num] = _share;
 	}
 	
-	function resetProfile() public {
+	function resetProfile() public {//TODO check this works as expected
 	    delete profiles[msg.sender];
 	}
-    
+
+	function() public payable {
+		contractBalance += msg.value;
+	}
+
 	//TODO set up sending throuh 3rd party
-	//Straight donate
+	//Direct amt donate
 	function donate(uint _amount, address _charity) public payable {
 		checkAmount(_amount);
 		checkCharity(_charity);
 		contractBalance += (msg.value-_amount);
 		charities[_charity].balance += _amount;
+	}
 
+	//Direct % donate
+	function donateWithPerc(uint8 _percentage, address _charity) public payable {
+		checkCharity(_charity);
+		checkPerc(_percentage);
+		uint donateAmt = (msg.value * _percentage) / 100;
+		contractBalance += (msg.value - donateAmt);
+		charities[_charity].balance += donateAmt;
+	}
+
+	//Direct profile donate
+    function donateWithProfile(uint _amount) public payable {
+		checkAmount(_amount);
+		uint donated;
+		for(uint8 i = 0; i < profiles[msg.sender].numOfCharities; i++){
+			checkCharity(profiles[msg.sender].charities[i]);
+			uint amount = profiles[msg.sender].share[i] / profiles[msg.sender].totalShares * _amount;
+			charities[profiles[msg.sender].charities[i]].balance += amount;
+			donated += amount;
+		}
+		contractBalance += (_amount - donated);//Scoop up the lost ether
 	}
     
-    //Is it more efficient to have these repeated outside functions 
+	uint minimumPayout = 1 ** 10;
+
+    //Payout all valid charities
+	function payoutAllCharities() public {
+		for(uint16 i = 0; i < validCharities.length; i++){
+			checkCharity(validCharities[i]);
+			if(charities[validCharities[i]].balance < minimumPayout){
+				continue;
+			}
+		    validCharities[i].transfer(charities[validCharities[i]].balance);
+		    charities[validCharities[i]].balance = 0;
+		}
+	}
+
+	//Force payout an individual charity
+	function payoutCharity(address _charity) public {
+		checkCharity(_charity);
+		_charity.transfer(charities[_charity].balance);
+		charities[_charity].balance = 0;
+	}
+
+	//Is it more efficient to have these repeated without functions 
     function checkCharity(address _charity) view internal {
 		require(charities[_charity].valid, "Invalid charity");
 	}
@@ -83,57 +157,7 @@ contract Donator is Ownable {
 		require(_percentage  <= 100, "Invalid percentage");
 	}
 
-	//Straight % donate
-	function donateWithPerc(uint8 _percentage, address _charity) public payable {
-		checkCharity(_charity);
-		checkPerc(_percentage);
-		uint donateAmt = (msg.value*_percentage)/100;//TODO safemath
-		contractBalance += (msg.value-donateAmt);
-		charities[_charity].balance+=donateAmt;
-	}
-
-    function donateWithProfile(uint _amount) public payable {//safemath
-		checkAmount(_amount);
-		uint donated;
-		for(uint i = 0; i<profiles[msg.sender].numOfCharities; i++){
-			checkCharity(profiles[msg.sender].charities[i]);
-			uint amount = profiles[msg.sender].share[i]/profiles[msg.sender].totalShares*_amount;
-			charities[profiles[msg.sender].charities[i]].balance+=amount;//charities
-			donated+=amount;
-		}
-		contractBalance+=(_amount-donated);
-	}
-
-	function tempValidateCharity(address _charity) public {
-	    require(!charities[_charity].valid, "Charity already validated");
-		charities[_charity].valid = true;
-		validCharities.push(_charity);
-	}
-    
-	function payoutAllCharities() public {
-		for(uint16 i=0; i<validCharities.length; i++){
-			checkCharity(validCharities[i]);
-		    validCharities[i].transfer(charities[validCharities[i]].balance);
-		    charities[validCharities[i]].balance=0;
-		}
-	}
-
-	function payoutCharity(address _charity) public {
-		checkCharity(_charity);
-		_charity.transfer(charities[_charity].balance);
-		charities[_charity].balance=0;
-	}
-
-    
-	function sendEther() internal {
-        
-	}
-	   
-	function sendTokens() internal {
-        
-	}
-    
-	function withdrawAll() onlyOwner public {//TODO handle reentancy attack
+	function withdrawAll() onlyOwner public {//TODO handle (pointless) reentancy attack
 		msg.sender.transfer(contractBalance);
         contractBalance = 0;
 	}
