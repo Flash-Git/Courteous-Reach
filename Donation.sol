@@ -10,6 +10,8 @@ contract Donator is Ownable {
 	mapping(address => profile) public profiles;
     //Array of valid charities
    	address[] public validCharities;
+    //Mininmum needed in charity balance to withdraw
+    uint public minimumPayout = 1 *10 ** 16;
 
 	//Donations done with profile are split between the chosen charities based on shares        
     struct profile {
@@ -48,13 +50,13 @@ contract Donator is Ownable {
 	    require(charities[_charity].valid, "Charity not valid");
 		charities[_charity].valid = false;
 		validCharities.push(_charity);
-		if(validCharities.length==1){
+		if(validCharities.length == 1){
 			delete validCharities[0];
 			return;
 		}
 		//Replace the invalid charity with the last one
 		for(uint i = 0; i < validCharities.length; i++){
-			if(validCharities[i]==_charity){
+			if(validCharities[i] == _charity){
 				validCharities[i] = validCharities[validCharities.length-1];
 				delete validCharities[validCharities.length-1];
 				return;
@@ -65,7 +67,7 @@ contract Donator is Ownable {
 	function addCharityToProfile(address _charity, uint8 _share) public {
 		require(charities[_charity].valid, "Invalid charity");
 		uint8 num = profiles[msg.sender].numOfCharities;
-		if(num<5) {
+		if(num < 5) {
 			profiles[msg.sender].charities[num] = _charity;
 			profiles[msg.sender].share[num] = _share;
 			profiles[msg.sender].numOfCharities++;
@@ -94,10 +96,10 @@ contract Donator is Ownable {
 
 	//TODO set up sending throuh 3rd party
 	//Direct amt donate
-	function donate(uint _amount, address _charity) public payable {
+	function donateWithAmt(uint _amount, address _charity) public payable {
 		checkAmount(_amount);
 		checkCharity(_charity);
-		contractBalance += (msg.value-_amount);
+		contractBalance += (msg.value - _amount);
 		charities[_charity].balance += _amount;
 	}
 
@@ -120,11 +122,13 @@ contract Donator is Ownable {
 			charities[profiles[msg.sender].charities[i]].balance += amount;
 			donated += amount;
 		}
-		contractBalance += (_amount - donated);//Scoop up the lost ether
+		contractBalance += (msg.value - donated);//Scoop up the lost ether
 	}
     
-	uint minimumPayout = 1 ** 10;
-
+    function setMinPayout(uint _minP) public onlyOwner {
+        minimumPayout = _minP;
+    }
+    
     //Payout all valid charities
 	function payoutAllCharities() public {
 		for(uint16 i = 0; i < validCharities.length; i++){
