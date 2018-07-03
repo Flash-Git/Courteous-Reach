@@ -1,8 +1,8 @@
 # COURTEOUS-REACH
 
-# UNFINISHED/UNAUDITED - DO NOT USE
+## UNFINISHED/UNAUDITED - DO NOT USE
 
-# SUMMARY
+### SUMMARY
 This project is a cluster of Solidity Contracts that allow users to safely donate to their choice of verified charities with the least amount of overhead possible.
 
 Users can customise their own personal donation profile, use a preset or choose a single charity.
@@ -12,7 +12,7 @@ There should be a slider under each every day transaction to give users a choice
 This would be easy to integrate into Ethereum "Wallets" and DApps (Decentralised Applications).
 
 
-# PLANNED
+### PLANNED
 ENS integration.
 
 Support for ERC tokens.
@@ -24,5 +24,4 @@ Individual charities need to be contacted so they can verify an address as their
 A traditional offchain website will be set up to allow users to visualise the donations, see the list of current verified charities and make suggestions.
 
 
-# Future
 Support for more than just the Ethereum ecosystem.
