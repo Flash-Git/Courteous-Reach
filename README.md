@@ -24,4 +24,5 @@ Individual charities need to be contacted so they can verify an address as their
 A traditional offchain website will be set up to allow users to visualise the donations, see the list of current verified charities and make suggestions.
 
 
+### FUTURE
 Support for more than just the Ethereum ecosystem.
