@@ -4,7 +4,7 @@ contract Donator is Ownable {
 	
 	//TODO EVENTS
 
-	uint public contractBalance;
+	uint public donationBalance;
     
     //Every address is a potential charity
 	mapping(address => charity) public charities;
@@ -41,11 +41,18 @@ contract Donator is Ownable {
 		bool valid;
 		uint balance;
 	}
-
+	
+	event DonationReceived(address _from, uint _amount, address _charity);
+	event DonationSent(uint _amount, address _to);
+    event Withdrawal(uint _amount, address _to);
+    event ValidatedCharity(address _charity);
+    event InvalidatedCharity(address _charity);
+    
 	function validateCharity(address _charity) onlyOwner public {
 	    require(!charities[_charity].valid, "Attempting to validate a valid charity");
 		charities[_charity].valid = true;
 		validCharities.push(_charity);
+		emit ValidatedCharity(_charity);
 	}
 
 	function invalidateCharity(address _charity) onlyOwner public {
@@ -64,6 +71,7 @@ contract Donator is Ownable {
 				return;
 			}
 		}
+        emit InvalidatedCharity(_charity);
 	}
 
 	function addCharityToProfile(address _charity, uint8 _share) public {
@@ -92,9 +100,11 @@ contract Donator is Ownable {
 	function resetProfile() public {//TODO check this works as expected
 	    delete profiles[msg.sender];
 	}
-
+    
+	//Rejects potentially unintentional donations
 	function() public payable {
-		contractBalance += msg.value;
+		require(msg.data.length == 0, "Invalid function");
+		emit DonationReceived(msg.sender, msg.value, this);
 	}
 
 	//TODO set up sending throuh 3rd party
@@ -102,17 +112,19 @@ contract Donator is Ownable {
 	function donateWithAmt(uint _amount, address _charity) public payable {
 		checkAmount(_amount);
 		checkCharity(_charity);
-		contractBalance += (msg.value - _amount);
 		charities[_charity].balance += _amount;
+		donationBalance += _amount;
+		emit DonationReceived(msg.sender, _amount, _charity);
 	}
 
 	//Direct % donate
-	function donateWithPerc(uint8 _percentage, address _charity) public payable {
+	function donateWithPerc(uint _percentage, address _charity) public payable {
 		checkCharity(_charity);
 		checkPerc(_percentage);
 		uint donateAmt = (msg.value * _percentage) / 100;
-		contractBalance += (msg.value - donateAmt);
 		charities[_charity].balance += donateAmt;
+		donationBalance += donateAmt;
+		emit DonationReceived(msg.sender, donateAmt, _charity);
 	}
 
 	//Direct profile donate
@@ -121,11 +133,12 @@ contract Donator is Ownable {
 		uint donated;
 		for(uint8 i = 0; i < profiles[msg.sender].numOfCharities; i++){
 			checkCharity(profiles[msg.sender].charities[i]);
-			uint amount = _amount * profiles[msg.sender].share[i] / profiles[msg.sender].totalShares;
-			charities[profiles[msg.sender].charities[i]].balance += amount;
-			donated += amount;
+			uint donateAmt = _amount * profiles[msg.sender].share[i] / profiles[msg.sender].totalShares;
+			charities[profiles[msg.sender].charities[i]].balance += donateAmt;
+			donated += donateAmt;
+			emit DonationReceived(msg.sender, donateAmt, profiles[msg.sender].charities[i]);
 		}
-		contractBalance += (msg.value - donated);//Scoop up the lost ether
+		donationBalance += donated;
 	}
     
     function setMinPayout(uint _minP) public onlyOwner {
@@ -141,6 +154,7 @@ contract Donator is Ownable {
 			}
 			uint amtToPayout = charities[validCharities[i]].balance; 
 		    charities[validCharities[i]].balance = 0;
+		    donationBalance -= amtToPayout;
 		    validCharities[i].transfer(amtToPayout);
 		}
 	}
@@ -150,10 +164,11 @@ contract Donator is Ownable {
 		checkCharity(_charity);
 		uint amtToPayout = charities[_charity].balance;
 		charities[_charity].balance = 0;
+	    donationBalance -= amtToPayout;
 		_charity.transfer(amtToPayout);
 	}
 
-	//Is it more efficient to have these repeated without functions 
+	//Is it more efficient to have these repeated without functions?
     function checkCharity(address _charity) view internal {
 		require(charities[_charity].valid, "Invalid charity");
 	}
@@ -162,14 +177,17 @@ contract Donator is Ownable {
 		require(_amount <= msg.value, "Attempting to donate more than was sent");
 	}
 
-	function checkPerc(uint8 _percentage) pure internal {
+	function checkPerc(uint _percentage) pure internal {
 		require(_percentage  <= 100, "Invalid percentage");
 	}
-
+    
+    function withdrawableBalance() public view returns (uint) {
+	    return address(this).balance - donationBalance;
+	}
+	
 	function withdrawAll() onlyOwner public {
-		uint amtToWithdraw = contractBalance;
-        contractBalance = 0;
-		msg.sender.transfer(amtToWithdraw);
+		msg.sender.transfer(address(this).balance - donationBalance);
+		emit Withdrawal(address(this).balance - donationBalance, owner);
 	}
 
 }
