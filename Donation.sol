@@ -2,6 +2,8 @@ pragma solidity ^0.4.24;
 
 contract Donator is Ownable {
 	
+	//TODO EVENTS
+
 	uint public contractBalance;
     
     //Every address is a potential charity
@@ -11,7 +13,7 @@ contract Donator is Ownable {
     //Array of valid charities
    	address[] public validCharities;
     //Mininmum needed in charity balance to withdraw
-    uint public minimumPayout = 1 *10 ** 16;
+    uint public minimumPayout = 1 * 10 ** 16;
 
 	//Donations done with profile are split between the chosen charities based on shares        
     struct profile {
@@ -41,13 +43,13 @@ contract Donator is Ownable {
 	}
 
 	function validateCharity(address _charity) onlyOwner public {
-	    require(!charities[_charity].valid, "Charity already validated");
+	    require(!charities[_charity].valid, "Attempting to validate a valid charity");
 		charities[_charity].valid = true;
 		validCharities.push(_charity);
 	}
 
 	function invalidateCharity(address _charity) onlyOwner public {
-	    require(charities[_charity].valid, "Charity not valid");
+	    require(charities[_charity].valid, "Attempting to invalidate an invalid charity");
 		charities[_charity].valid = false;
 		validCharities.push(_charity);
 		if(validCharities.length == 1){
@@ -81,7 +83,7 @@ contract Donator is Ownable {
 	}
 	
 	function editCharityFromProfile(uint8 _num, address _charity, uint8 _share) public {
-	    require(_num <= profiles[msg.sender].numOfCharities, "Editing outside of array");
+    //Does not technically remove the charity from profile, it still takes up a slot
 	    profiles[msg.sender].charities[_num] = _charity;
 		profiles[msg.sender].share[_num] = _share;
 	}
@@ -133,19 +135,22 @@ contract Donator is Ownable {
 	function payoutAllCharities() public {
 		for(uint16 i = 0; i < validCharities.length; i++){
 			checkCharity(validCharities[i]);
-			if(charities[validCharities[i]].balance < minimumPayout){
+			if(charities[validCharities[i]].balance <= minimumPayout){
 				continue;
 			}
-		    validCharities[i].transfer(charities[validCharities[i]].balance);
+			uint amtToPayout = charities[validCharities[i]].balance; 
 		    charities[validCharities[i]].balance = 0;
+		    validCharities[i].transfer(amtToPayout);
+
 		}
 	}
 
 	//Force payout an individual charity
 	function payoutCharity(address _charity) public {
 		checkCharity(_charity);
-		_charity.transfer(charities[_charity].balance);
+		uint amtToPayout = charities[_charity].balance;
 		charities[_charity].balance = 0;
+		_charity.transfer(amtToPayout);
 	}
 
 	//Is it more efficient to have these repeated without functions 
@@ -157,13 +162,14 @@ contract Donator is Ownable {
 		require(_amount <= msg.value, "Attempting to donate more than was sent");
 	}
 
-	function checkPerc(uint8 _percentage) view internal {
+	function checkPerc(uint8 _percentage) pure internal {
 		require(_percentage  <= 100, "Invalid percentage");
 	}
 
-	function withdrawAll() onlyOwner public {//TODO handle (pointless) reentancy attack
-		msg.sender.transfer(contractBalance);
+	function withdrawAll() onlyOwner public {
+		uint amtToWithdraw = contractBalance;
         contractBalance = 0;
+		msg.sender.transfer(amtToWithdraw);
 	}
 
 }
