@@ -77,13 +77,14 @@ contract Donator is Ownable {
 		}
 	}
     
+    //Does not technically remove the charity from profile, it still takes up a slot
 	function removeCharityFromProfile(uint8 _num) public {
 		profiles[msg.sender].totalShares -= profiles[msg.sender].share[_num];
 	    profiles[msg.sender].share[_num] = 0;
 	}
 	
 	function editCharityFromProfile(uint8 _num, address _charity, uint8 _share) public {
-    //Does not technically remove the charity from profile, it still takes up a slot
+	    require(_num <= profiles[msg.sender].numOfCharities, "Attempting to edit outside of array");
 	    profiles[msg.sender].charities[_num] = _charity;
 		profiles[msg.sender].share[_num] = _share;
 	}
