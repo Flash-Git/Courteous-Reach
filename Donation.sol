@@ -18,9 +18,9 @@ contract Donator is Ownable {
 	//Donations done with profile are split between the chosen charities based on shares        
     struct profile {
     	address[5] charities;//Charities on profile
-        uint8[5] share;//Shares per Charity
-        uint16 totalShares;//Gas efficient to keep track of total shares(?)
-        uint8 numOfCharities;//Gas efficient by knowing number of charities per profile
+        uint[5] share;//Shares per Charity
+        uint totalShares;//Gas efficient to keep track of total shares(?)
+        uint numOfCharities;//Gas efficient by knowing number of charities per profile
     }
     
     //TODO Handle recognition
@@ -68,7 +68,7 @@ contract Donator is Ownable {
 
 	function addCharityToProfile(address _charity, uint8 _share) public {
 		require(charities[_charity].valid, "Invalid charity");
-		uint8 num = profiles[msg.sender].numOfCharities;
+		uint num = profiles[msg.sender].numOfCharities;
 		if(num < 5) {
 			profiles[msg.sender].charities[num] = _charity;
 			profiles[msg.sender].share[num] = _share;
@@ -121,7 +121,7 @@ contract Donator is Ownable {
 		uint donated;
 		for(uint8 i = 0; i < profiles[msg.sender].numOfCharities; i++){
 			checkCharity(profiles[msg.sender].charities[i]);
-			uint amount = profiles[msg.sender].share[i] / profiles[msg.sender].totalShares * _amount;
+			uint amount = _amount * profiles[msg.sender].share[i] / profiles[msg.sender].totalShares;
 			charities[profiles[msg.sender].charities[i]].balance += amount;
 			donated += amount;
 		}
@@ -134,7 +134,7 @@ contract Donator is Ownable {
     
     //Payout all valid charities
 	function payoutAllCharities() public {
-		for(uint16 i = 0; i < validCharities.length; i++){
+		for(uint i = 0; i < validCharities.length; i++){
 			checkCharity(validCharities[i]);
 			if(charities[validCharities[i]].balance <= minimumPayout){
 				continue;
@@ -142,7 +142,6 @@ contract Donator is Ownable {
 			uint amtToPayout = charities[validCharities[i]].balance; 
 		    charities[validCharities[i]].balance = 0;
 		    validCharities[i].transfer(amtToPayout);
-
 		}
 	}
 
