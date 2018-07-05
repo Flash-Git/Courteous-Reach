@@ -1,21 +1,19 @@
 pragma solidity ^0.4.24;
 
 contract Ownable {
-//OpenZeppelin's contract 
+  //Forked from OpenZeppelin
+  
   address public owner;
 
   event OwnershipRenounced(address indexed previousOwner);
-  event OwnershipTransferred(
-    address indexed previousOwner,
-    address indexed newOwner
-  );
+  event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
   constructor() public {
     owner = msg.sender;
   }
 
   modifier onlyOwner() {
-    require(msg.sender == owner);
+    require(msg.sender == owner, "Not the owner");
     _;
   }
 
