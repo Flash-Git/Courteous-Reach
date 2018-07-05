@@ -144,6 +144,7 @@ contract Donator is Ownable {
 		    charities[validCharities[i]].balance = 0;
 		    donationBalance -= amtToPayout;
 		    validCharities[i].transfer(amtToPayout);
+		    emit DonationSent(amtToPayout, validCharities[i]);
 		}
 	}
 	
@@ -154,6 +155,7 @@ contract Donator is Ownable {
 		charities[_charity].balance = 0;
 	    donationBalance -= amtToPayout;
 		_charity.transfer(amtToPayout);
+		emit DonationSent(amtToPayout, _charity);
 	}
 
 	//Is it more efficient to have these repeated without functions?
