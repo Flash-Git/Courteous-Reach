@@ -1,19 +1,17 @@
 pragma solidity ^0.4.24;
 
 contract Donator is Ownable {
-	
-	//TODO EVENTS
 
+    //Total donation ether (in wei) ready to send
 	uint public donationBalance;
-    
+	bool internal canBeDestroyed = true;
+
     //Every address is a potential charity
 	mapping(address => charity) public charities;
 	//Every address has a donation profile
 	mapping(address => profile) public profiles;
     //Array of valid charities
-   	address[] public validCharities;
-    //Mininmum needed in charity balance to withdraw
-    uint public minimumPayout = 1 * 10 ** 16;
+   	address[] internal validCharities;
 
 	//Donations done with profile are split between the chosen charities based on shares        
     struct profile {
@@ -22,12 +20,6 @@ contract Donator is Ownable {
         uint totalShares;//Gas efficient to keep track of total shares(?)
         uint numOfCharities;//Gas efficient by knowing number of charities per profile
     }
-    
-    //TODO Handle recognition
-	struct donator {
-		address addr;
-		//uint amtDonated;
-	}
     
     /* TODO Handle tokens 
 	struct token {
@@ -42,11 +34,11 @@ contract Donator is Ownable {
 		uint balance;
 	}
 	
-	event DonationReceived(address _from, uint _amount, address _charity);
-	event DonationSent(uint _amount, address _to);
-    event Withdrawal(uint _amount, address _to);
-    event ValidatedCharity(address _charity);
-    event InvalidatedCharity(address _charity);
+	event DonationReceived(address indexed _from, uint indexed _amount, address indexed _charity);
+	event DonationSent(uint indexed _amount, address indexed _to);
+    event Withdrawal(uint indexed _amount, address indexed _to);
+    event ValidatedCharity(address indexed _charity);
+    event InvalidatedCharity(address indexed _charity);
     
 	function validateCharity(address _charity) onlyOwner public {
 	    require(!charities[_charity].valid, "Attempting to validate a valid charity");
@@ -141,15 +133,11 @@ contract Donator is Ownable {
 		donationBalance += donated;
 	}
     
-    function setMinPayout(uint _minP) public onlyOwner {
-        minimumPayout = _minP;
-    }
-    
     //Payout all valid charities
-	function payoutAllCharities() public {
+	function payoutAllCharities(uint _minimumPayout) public {
 		for(uint i = 0; i < validCharities.length; i++){
 			checkCharity(validCharities[i]);
-			if(charities[validCharities[i]].balance <= minimumPayout){
+			if(charities[validCharities[i]].balance <= _minimumPayout){
 				continue;
 			}
 			uint amtToPayout = charities[validCharities[i]].balance; 
@@ -158,7 +146,7 @@ contract Donator is Ownable {
 		    validCharities[i].transfer(amtToPayout);
 		}
 	}
-
+	
 	//Force payout an individual charity
 	function payoutCharity(address _charity) public {
 		checkCharity(_charity);
@@ -180,14 +168,30 @@ contract Donator is Ownable {
 	function checkPerc(uint _percentage) pure internal {
 		require(_percentage  <= 100, "Invalid percentage");
 	}
+	
+	function contractBalance() public view returns (uint) {
+        return address(this).balance;
+    }
     
-    function withdrawableBalance() public view returns (uint) {
+    function withdrawableBalance() onlyOwner public view returns (uint) {
 	    return address(this).balance - donationBalance;
 	}
 	
 	function withdrawAll() onlyOwner public {
+	    assert(address(this).balance - donationBalance >= 0);
 		msg.sender.transfer(address(this).balance - donationBalance);
-		emit Withdrawal(address(this).balance - donationBalance, owner);
+		emit Withdrawal(address(this).balance - donationBalance, msg.sender);
+	}
+	
+	function removeEmergencyEscape() onlyOwner public {
+	    canBeDestroyed = false;
+	}
+	
+	//Temporary escape in case of critical error
+	function selfDestruct() onlyOwner public {
+	    require(canBeDestroyed, "Can no longer be destroyed, sorry");
+	    emit Withdrawal(address(this).balance, msg.sender);
+	    selfdestruct(owner);
 	}
 
 }
