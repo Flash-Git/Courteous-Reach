@@ -39,7 +39,7 @@ contract Donator is Ownable {
     event Withdrawal(uint _amount, address indexed _to);
     event ValidatedCharity(address indexed _charity);
     event InvalidatedCharity(address indexed _charity);
-    event ModifyCharityOnProfile(address indexed _profile, uint _index, address indexed _charity, uint _shares);
+    event ModifyCharityOnProfile(address indexed _profile, uint8 _index, address indexed _charity, uint8 _shares);
     event KilledContract(uint _amount, address indexed _to);
     
 	function validateCharity(address _charity) onlyOwner public {
@@ -68,7 +68,7 @@ contract Donator is Ownable {
         emit InvalidatedCharity(_charity);
 	}
 	
-	function addProfileCharity(address _charity, uint _share) public {//Max _share size is 255
+	function addProfileCharity(address _charity, uint8 _share) public {//Max _share size is 255
 		require(charities[_charity].valid, "Invalid charity");
 		require(profiles[msg.sender].numOfCharities < maxCharitiesPerProfile, "Already at max number of charities");
 		if(profiles[msg.sender].charities.length == profiles[msg.sender].numOfCharities){//Length can be bigger than numOfCharities due to resize of maxCharitiesPerProfile
@@ -122,7 +122,7 @@ contract Donator is Ownable {
 	}
 
 	//Direct % donate
-	function donateWithPerc(uint _percentage, address _charity) public payable {
+	function donateWithPerc(uint8 _percentage, address _charity) public payable {
 		checkCharity(_charity);
 		checkPerc(_percentage);
 		uint donateAmt = (msg.value * _percentage) / 100;
@@ -156,7 +156,7 @@ contract Donator is Ownable {
     
     //Payout all valid charities
 	function payoutAllCharities(uint _minimumPayout) public {
-		for(uint i = 0; i < validCharities.length; i++){
+		for(uint8 i = 0; i < validCharities.length; i++){
 			checkCharity(validCharities[i]);
 			uint amtToPayout = charities[validCharities[i]].balance; 
 			if(amtToPayout < _minimumPayout || amtToPayout == 0){
