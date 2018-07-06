@@ -11,8 +11,8 @@ contract Donator is Ownable {
 	//Every address has a donation profile
 	mapping(address => profile) public profiles;
     //Array of valid charities
-   	address[] internal validCharities;
-
+   	address[] public validCharities;
+    
 	//Donations done with profile are split between the chosen charities based on shares        
     struct profile {
     	address[] charities;//Charities on profile
@@ -25,14 +25,6 @@ contract Donator is Ownable {
 		bool valid;
 		uint balance;
 	}
-
-    /* TODO Handle tokens 
-	struct token {
-		address addr;
-		string name;
-		string symbol;
-		bool valid;
-	}*/
 	
 	event Received(address _from, uint _amount, address indexed _charity);
 	event Sent(uint _amount, address indexed _to);
@@ -42,6 +34,8 @@ contract Donator is Ownable {
     event ModifyCharityOnProfile(address indexed _profile, uint8 _index, address indexed _charity, uint8 _shares);
     event KilledContract(uint _amount, address indexed _to);
     
+    //Careful with number of validated charities. 
+    //If the number gets too large, perhaps set other contracts as proxy donation addresses to cheapen the cost of looping
 	function validateCharity(address _charity) onlyOwner public {
 	    require(!charities[_charity].valid, "Attempting to validate a valid charity");
 		charities[_charity].valid = true;
@@ -52,17 +46,12 @@ contract Donator is Ownable {
 	function invalidateCharity(address _charity) onlyOwner public {
 	    require(charities[_charity].valid, "Attempting to invalidate an invalid charity");
 		charities[_charity].valid = false;
-		validCharities.push(_charity);
-		if(validCharities.length == 1){
-			delete validCharities[0];
-			return;
-		}
 		//Replace the invalid charity with the last one
-		for(uint8 i = 0; i < validCharities.length; i++){
+		for(uint16 i = 0; i < validCharities.length; i++){
 			if(validCharities[i] == _charity){
 				validCharities[i] = validCharities[validCharities.length-1];
-				delete validCharities[validCharities.length-1];
-				return;
+				validCharities.length--;//shortening length does delete the omitted element
+				break;
 			}
 		}
         emit InvalidatedCharity(_charity);
@@ -156,7 +145,7 @@ contract Donator is Ownable {
     
     //Payout all valid charities
 	function payoutAllCharities(uint _minimumPayout) public {
-		for(uint8 i = 0; i < validCharities.length; i++){
+		for(uint16 i = 0; i < validCharities.length; i++){
 			checkCharity(validCharities[i]);
 			uint amtToPayout = charities[validCharities[i]].balance; 
 			if(amtToPayout < _minimumPayout || amtToPayout == 0){
