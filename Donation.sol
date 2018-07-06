@@ -1,4 +1,4 @@
-pragma solidity ^0.4.24;
+pragma solidity 0.4.24;
 
 contract Donator is Ownable {
 
@@ -66,7 +66,7 @@ contract Donator is Ownable {
         emit InvalidatedCharity(_charity);
 	}
 
-	function addCharityToProfile(address _charity, uint8 _share) public {
+	function addCharityToProfile(address _charity, uint _share) public {
 		require(charities[_charity].valid, "Invalid charity");
 		uint num = profiles[msg.sender].numOfCharities;
 		if(num < 5) {
@@ -78,12 +78,12 @@ contract Donator is Ownable {
 	}
     
     //Does not technically remove the charity from profile, it still takes up a slot
-	function removeCharityFromProfile(uint8 _num) public {
+	function removeCharityFromProfile(uint _num) public {
 		profiles[msg.sender].totalShares -= profiles[msg.sender].share[_num];
 	    profiles[msg.sender].share[_num] = 0;
 	}
 	
-	function editCharityFromProfile(uint8 _num, address _charity, uint8 _share) public {
+	function editCharityFromProfile(uint _num, address _charity, uint _share) public {
 	    require(_num <= profiles[msg.sender].numOfCharities, "Attempting to edit outside of array");
 	    profiles[msg.sender].charities[_num] = _charity;
 		profiles[msg.sender].share[_num] = _share;
@@ -122,8 +122,9 @@ contract Donator is Ownable {
 	//Direct profile donate
     function donateWithProfile(uint _amount) public payable {
 		checkAmount(_amount);
+		require(profiles[msg.sender].totalShares > 0, "Profile requires more than 0 shares");
 		uint donated;
-		for(uint8 i = 0; i < profiles[msg.sender].numOfCharities; i++){
+		for(uint i = 0; i < profiles[msg.sender].numOfCharities; i++){
 			checkCharity(profiles[msg.sender].charities[i]);
 			uint donateAmt = _amount * profiles[msg.sender].share[i] / profiles[msg.sender].totalShares;
 			charities[profiles[msg.sender].charities[i]].balance += donateAmt;
@@ -137,10 +138,10 @@ contract Donator is Ownable {
 	function payoutAllCharities(uint _minimumPayout) public {
 		for(uint i = 0; i < validCharities.length; i++){
 			checkCharity(validCharities[i]);
-			if(charities[validCharities[i]].balance <= _minimumPayout){
+			uint amtToPayout = charities[validCharities[i]].balance; 
+			if(amtToPayout < _minimumPayout || amtToPayout == 0){
 				continue;
 			}
-			uint amtToPayout = charities[validCharities[i]].balance; 
 		    charities[validCharities[i]].balance = 0;
 		    donationBalance -= amtToPayout;
 		    validCharities[i].transfer(amtToPayout);
