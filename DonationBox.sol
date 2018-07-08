@@ -1,6 +1,6 @@
 pragma solidity 0.4.24;
 
-contract Donator is Ownable {
+contract DonationBox is Ownable {
 
     //Total donation ether (in wei) ready to send
 	uint public donationBalance;
@@ -10,8 +10,6 @@ contract Donator is Ownable {
 	mapping(address => charity) public charities;
 	//Every address has a donation profile
 	mapping(address => profile) public profiles;
-	//Every address has an amount donated
-	mapping(address => uint) public amtDonated;//Not to be taken seriously
     //Array of valid charities
    	address[] public validCharities;
     
@@ -38,7 +36,7 @@ contract Donator is Ownable {
 
 	//Initial conditions
     constructor() public {
-    	validateCharity(owner);
+        validateCharity(owner);
     }
 
     //Careful with number of validated charities. 
@@ -108,54 +106,17 @@ contract Donator is Ownable {
 
 	//Doesn't update donator's balance
 	function() public payable {
-		emit Received(msg.sender, msg.value, address(this));
+		emit Received(msg.sender, msg.value, address(this));//I don't know why this gas cost fluctuates
 	}
 
-	//Direct amt donate
-	function donateWithAmt(uint _amount, address _charity) public payable {
-		checkAmount(_amount);
+	function donateTo(address _charity) public payable {
 		checkCharity(_charity);
-		charities[_charity].balance += _amount;
-		donationBalance += _amount;
-		amtDonated[msg.sender] += _amount;
-		emit Received(msg.sender, _amount, _charity);
+		charities[_charity].balance += msg.value;
+		donationBalance += msg.value;
+		emit Received(msg.sender, msg.value, _charity);
 	}
 
-	//On behalf of, set to 0x0 for anonymous
-	function donateWithAmtFor(uint _amount, address _charity, address _for) public payable {
-		checkAmount(_amount);
-		checkCharity(_charity);
-		charities[_charity].balance += _amount;
-		donationBalance += _amount;
-		amtDonated[_for] += _amount;
-		emit Received(_for, _amount, _charity);
-	}
-
-	//Direct % donate
-	function donateWithPerc(uint8 _percentage, address _charity) public payable {
-		checkCharity(_charity);
-		checkPerc(_percentage);
-		uint donateAmt = (msg.value * _percentage) / 100;
-		charities[_charity].balance += donateAmt;
-		donationBalance += donateAmt;
-		amtDonated[msg.sender] += donateAmt;
-		emit Received(msg.sender, donateAmt, _charity);
-	}
-
-	function donateWithPercFor(uint8 _percentage, address _charity, address _for) public payable {
-		checkCharity(_charity);
-		checkPerc(_percentage);
-		uint donateAmt = (msg.value * _percentage) / 100;
-		charities[_charity].balance += donateAmt;
-		donationBalance += donateAmt;
-		amtDonated[_for] += donateAmt;
-		emit Received(_for, donateAmt, _charity);
-	}
-
-	//Direct profile donate
-    function donateWithProfile(uint _amount) public payable {
-		checkAmount(_amount);
-		require(profiles[msg.sender].totalShares > 0, "Profile requires more than 0 shares");
+	function donateWithProfile() public payable {
 		//Only possible if owner reduces maxCharitiesPerProfile
 		while(profiles[msg.sender].numOfCharities > maxCharitiesPerProfile){//can either delete profile or remove the last elements
 			profiles[msg.sender].numOfCharities -= 1;
@@ -164,90 +125,42 @@ contract Donator is Ownable {
 		    profiles[msg.sender].shares[profiles[msg.sender].numOfCharities] = 0;
 			emit ModifyCharityOnProfile(msg.sender, profiles[msg.sender].numOfCharities, profiles[msg.sender].charities[profiles[msg.sender].numOfCharities], 0);
 		}
+		require(profiles[msg.sender].totalShares > 0, "Profile requires more than 0 shares");//This logic seems suboptimal
+
 		uint donated;
 		for(uint8 i = 0; i < profiles[msg.sender].numOfCharities; i++){
 			checkCharity(profiles[msg.sender].charities[i]);
-			uint donateAmt = _amount * profiles[msg.sender].shares[i] / profiles[msg.sender].totalShares;
+			uint donateAmt = msg.value * profiles[msg.sender].shares[i] / profiles[msg.sender].totalShares;
 			charities[profiles[msg.sender].charities[i]].balance += donateAmt;
 			donated += donateAmt;
 			emit Received(msg.sender, donateAmt, profiles[msg.sender].charities[i]);
-		}
+		}//Is creating a uint cheaper than increasing another uint x times?
 		donationBalance += donated;
-		amtDonated[msg.sender] += donated;
-	}
-    
-    function donateWithProfileFor(uint _amount, address _for) public payable {
-		checkAmount(_amount);
-		require(profiles[msg.sender].totalShares > 0, "Profile requires more than 0 shares");
-		//Only possible if owner reduces maxCharitiesPerProfile
-		while(profiles[msg.sender].numOfCharities > maxCharitiesPerProfile){//can either delete profile or remove the last elements
-			profiles[msg.sender].numOfCharities -= 1;
-			//Less code than nullifyProfileCharity()
-			profiles[msg.sender].totalShares -= profiles[msg.sender].shares[profiles[msg.sender].numOfCharities];
-		    profiles[msg.sender].shares[profiles[msg.sender].numOfCharities] = 0;
-			emit ModifyCharityOnProfile(msg.sender, profiles[msg.sender].numOfCharities, profiles[msg.sender].charities[profiles[msg.sender].numOfCharities], 0);
-		}
-		uint donated;
-		for(uint8 i = 0; i < profiles[msg.sender].numOfCharities; i++){
-			checkCharity(profiles[msg.sender].charities[i]);
-			uint donateAmt = _amount * profiles[msg.sender].shares[i] / profiles[msg.sender].totalShares;
-			charities[profiles[msg.sender].charities[i]].balance += donateAmt;
-			donated += donateAmt;
-			emit Received(_for, donateAmt, profiles[msg.sender].charities[i]);
-		}
-		donationBalance += donated;
-		amtDonated[_for] += donated;
 	}
 
-	//Donate with another's profile
-	function donateWithThisProfile(uint _amount, address _this) public payable {
-		checkAmount(_amount);
-		require(profiles[_this].totalShares > 0, "Profile requires more than 0 shares");
+	function donateWithProfile(address _profile) public payable {
 		//Only possible if owner reduces maxCharitiesPerProfile
-		while(profiles[_this].numOfCharities > maxCharitiesPerProfile){//can either delete profile or remove the last elements
-			profiles[_this].numOfCharities -= 1;
+		while(profiles[_profile].numOfCharities > maxCharitiesPerProfile){//can either delete profile or remove the last elements
+			profiles[_profile].numOfCharities -= 1;
 			//Less code than nullifyProfileCharity()
-			profiles[_this].totalShares -= profiles[_this].shares[profiles[_this].numOfCharities];
-		    profiles[_this].shares[profiles[_this].numOfCharities] = 0;
-			emit ModifyCharityOnProfile(_this, profiles[_this].numOfCharities, profiles[_this].charities[profiles[_this].numOfCharities], 0);
+			profiles[_profile].totalShares -= profiles[_profile].shares[profiles[_profile].numOfCharities];
+		    profiles[_profile].shares[profiles[_profile].numOfCharities] = 0;
+			emit ModifyCharityOnProfile(_profile, profiles[_profile].numOfCharities, profiles[_profile].charities[profiles[_profile].numOfCharities], 0);
 		}
+		require(profiles[_profile].totalShares > 0, "Profile requires more than 0 shares");//This logic seems suboptimal
+
 		uint donated;
-		for(uint8 i = 0; i < profiles[_this].numOfCharities; i++){
-			checkCharity(profiles[_this].charities[i]);
-			uint donateAmt = _amount * profiles[_this].shares[i] / profiles[_this].totalShares;
-			charities[profiles[_this].charities[i]].balance += donateAmt;
+		for(uint8 i = 0; i < profiles[_profile].numOfCharities; i++){
+			checkCharity(profiles[_profile].charities[i]);
+			uint donateAmt = msg.value * profiles[_profile].shares[i] / profiles[_profile].totalShares;
+			charities[profiles[_profile].charities[i]].balance += donateAmt;
 			donated += donateAmt;
-			emit Received(msg.sender, donateAmt, profiles[_this].charities[i]);
-		}
+			emit Received(msg.sender, donateAmt, profiles[_profile].charities[i]);
+		}//Is creating a uint cheaper than increasing another uint x times?
 		donationBalance += donated;
-		amtDonated[msg.sender] += donated;
 	}
 
-	//Donate with another's profile on behalf of
-	function donateWithThisProfileFor(uint _amount, address _this, address _for) public payable {
-		checkAmount(_amount);
-		require(profiles[_this].totalShares > 0, "Profile requires more than 0 shares");
-		//Only possible if owner reduces maxCharitiesPerProfile
-		while(profiles[_this].numOfCharities > maxCharitiesPerProfile){//can either delete profile or remove the last elements
-			profiles[_this].numOfCharities -= 1;
-			//Less code than nullifyProfileCharity()
-			profiles[_this].totalShares -= profiles[_this].shares[profiles[_this].numOfCharities];
-		    profiles[_this].shares[profiles[_this].numOfCharities] = 0;
-			emit ModifyCharityOnProfile(_this, profiles[_this].numOfCharities, profiles[_this].charities[profiles[_this].numOfCharities], 0);
-		}
-		uint donated;
-		for(uint8 i = 0; i < profiles[_this].numOfCharities; i++){
-			checkCharity(profiles[_this].charities[i]);
-			uint donateAmt = _amount * profiles[_this].shares[i] / profiles[_this].totalShares;
-			charities[profiles[_this].charities[i]].balance += donateAmt;
-			donated += donateAmt;
-			emit Received(_for, donateAmt, profiles[_this].charities[i]);
-		}
-		donationBalance += donated;
-		amtDonated[_for] += donated;
-	}
-
-    //Payout all valid charities
+	//Payout all valid charities
 	function payoutAllCharities(uint _minimumPayout) public {
 		for(uint16 i = 0; i < validCharities.length; i++){
 			checkCharity(validCharities[i]);
@@ -275,14 +188,6 @@ contract Donator is Ownable {
 	//Is it more efficient to have these repeated without functions?
     function checkCharity(address _charity) view internal {
 		require(charities[_charity].valid, "Invalid charity");
-	}
-
-    function checkAmount(uint _amount) view internal {
-		require(_amount <= msg.value, "Attempting to donate more than was sent");
-	}
-
-	function checkPerc(uint _percentage) pure internal {
-		require(_percentage  <= 100, "Invalid percentage");
 	}
 
 	function contractBalance() public view returns (uint) {
