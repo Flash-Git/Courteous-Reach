@@ -97,13 +97,16 @@ contract Donator is Ownable {
 		}
 	}
 
+	function copyProfileFrom(address _from) public {
+		profiles[msg.sender] = profiles[_from];
+	}
+
 	function resetProfile() public {
 	    delete profiles[msg.sender];
 	}
 
 	//Doesn't update donator's balance
 	function() public payable {
-	//	require(msg.data.length == 0, "Invalid function");
 		emit Received(msg.sender, msg.value, address(this));
 	}
 
@@ -190,6 +193,54 @@ contract Donator is Ownable {
 			charities[profiles[msg.sender].charities[i]].balance += donateAmt;
 			donated += donateAmt;
 			emit Received(_for, donateAmt, profiles[msg.sender].charities[i]);
+		}
+		donationBalance += donated;
+		amtDonated[_for] += donated;
+	}
+
+	//Donate with another's profile
+	function donateWithThisProfile(uint _amount, address _this) public payable {
+		checkAmount(_amount);
+		require(profiles[_this].totalShares > 0, "Profile requires more than 0 shares");
+		//Only possible if owner reduces maxCharitiesPerProfile
+		while(profiles[_this].numOfCharities > maxCharitiesPerProfile){//can either delete profile or remove the last elements
+			profiles[_this].numOfCharities -= 1;
+			//Less code than nullifyProfileCharity()
+			profiles[_this].totalShares -= profiles[_this].shares[profiles[_this].numOfCharities];
+		    profiles[_this].shares[profiles[_this].numOfCharities] = 0;
+			emit ModifyCharityOnProfile(_this, profiles[_this].numOfCharities, profiles[_this].charities[profiles[_this].numOfCharities], 0);
+		}
+		uint donated;
+		for(uint8 i = 0; i < profiles_this].numOfCharities; i++){
+			checkCharity(profiles[_this].charities[i]);
+			uint donateAmt = _amount * profiles[_this].shares[i] / profiles_this].totalShares;
+			charities[profiles[_this].charities[i]].balance += donateAmt;
+			donated += donateAmt;
+			emit Received(msg.sender, donateAmt, profiles[_this].charities[i]);
+		}
+		donationBalance += donated;
+		amtDonated[msg.sender] += donated;
+	}
+
+	//Donate with another's profile on behalf of
+	function donateWithThisProfileFor(uint _amount, address _this, address _for) public payable {
+		checkAmount(_amount);
+		require(profiles[_this].totalShares > 0, "Profile requires more than 0 shares");
+		//Only possible if owner reduces maxCharitiesPerProfile
+		while(profiles[_this].numOfCharities > maxCharitiesPerProfile){//can either delete profile or remove the last elements
+			profiles[_this].numOfCharities -= 1;
+			//Less code than nullifyProfileCharity()
+			profiles[_this].totalShares -= profiles[_this].shares[profiles[_this].numOfCharities];
+		    profiles[_this].shares[profiles[_this].numOfCharities] = 0;
+			emit ModifyCharityOnProfile(_this, profiles[_this].numOfCharities, profiles[_this].charities[profiles[_this].numOfCharities], 0);
+		}
+		uint donated;
+		for(uint8 i = 0; i < profiles_this].numOfCharities; i++){
+			checkCharity(profiles[_this].charities[i]);
+			uint donateAmt = _amount * profiles[_this].shares[i] / profiles_this].totalShares;
+			charities[profiles[_this].charities[i]].balance += donateAmt;
+			donated += donateAmt;
+			emit Received(_for, donateAmt, profiles[_this].charities[i]);
 		}
 		donationBalance += donated;
 		amtDonated[_for] += donated;
