@@ -11,7 +11,7 @@ contract Donator is Ownable {
 	//Every address has a donation profile
 	mapping(address => profile) public profiles;
 	//Every address has an amount donated
-	mapping(address => uint) public amtDonated;
+	mapping(address => uint) public amtDonated;//Not to be taken seriously
     //Array of valid charities
    	address[] public validCharities;
     
@@ -53,7 +53,7 @@ contract Donator is Ownable {
 	function invalidateCharity(address _charity) onlyOwner public {
 	    require(charities[_charity].valid, "Attempting to invalidate an invalid charity");
 		charities[_charity].valid = false;
-		//Replace the invalid charity with the last one
+		//Replace the invalid charity with the last charity
 		for(uint16 i = 0; i < validCharities.length; i++){
 			if(validCharities[i] == _charity){
 				validCharities[i] = validCharities[validCharities.length-1];
@@ -69,12 +69,13 @@ contract Donator is Ownable {
 		require(profiles[msg.sender].numOfCharities < maxCharitiesPerProfile, "Already at max number of charities");
 		if(profiles[msg.sender].charities.length == profiles[msg.sender].numOfCharities){//Length can be bigger than numOfCharities due to resize of maxCharitiesPerProfile
 		    profiles[msg.sender].charities.push(_charity);
-		    profiles[msg.sender].shares.push(0);
+		    profiles[msg.sender].shares.push(_share);
 		}else{
 		    profiles[msg.sender].charities[profiles[msg.sender].numOfCharities] = _charity;
+		    profiles[msg.sender].totalShares -= profiles[msg.sender].shares[profiles[msg.sender].numOfCharities];
+			profiles[msg.sender].shares[profiles[msg.sender].numOfCharities] = _share;
 		}
-		profiles[msg.sender].shares[profiles[msg.sender].numOfCharities] = _share;
-		profiles[msg.sender].totalShares += _share;
+	    profiles[msg.sender].totalShares += _share;
 		profiles[msg.sender].numOfCharities++;
 		emit ModifyCharityOnProfile(msg.sender, profiles[msg.sender].numOfCharities-1, _charity, _share);
 	}
