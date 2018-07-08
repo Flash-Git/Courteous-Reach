@@ -211,9 +211,9 @@ contract Donator is Ownable {
 			emit ModifyCharityOnProfile(_this, profiles[_this].numOfCharities, profiles[_this].charities[profiles[_this].numOfCharities], 0);
 		}
 		uint donated;
-		for(uint8 i = 0; i < profiles_this].numOfCharities; i++){
+		for(uint8 i = 0; i < profiles[_this].numOfCharities; i++){
 			checkCharity(profiles[_this].charities[i]);
-			uint donateAmt = _amount * profiles[_this].shares[i] / profiles_this].totalShares;
+			uint donateAmt = _amount * profiles[_this].shares[i] / profiles[_this].totalShares;
 			charities[profiles[_this].charities[i]].balance += donateAmt;
 			donated += donateAmt;
 			emit Received(msg.sender, donateAmt, profiles[_this].charities[i]);
@@ -235,9 +235,9 @@ contract Donator is Ownable {
 			emit ModifyCharityOnProfile(_this, profiles[_this].numOfCharities, profiles[_this].charities[profiles[_this].numOfCharities], 0);
 		}
 		uint donated;
-		for(uint8 i = 0; i < profiles_this].numOfCharities; i++){
+		for(uint8 i = 0; i < profiles[_this].numOfCharities; i++){
 			checkCharity(profiles[_this].charities[i]);
-			uint donateAmt = _amount * profiles[_this].shares[i] / profiles_this].totalShares;
+			uint donateAmt = _amount * profiles[_this].shares[i] / profiles[_this].totalShares;
 			charities[profiles[_this].charities[i]].balance += donateAmt;
 			donated += donateAmt;
 			emit Received(_for, donateAmt, profiles[_this].charities[i]);
