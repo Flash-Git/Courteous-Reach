@@ -10,6 +10,8 @@ contract Donator is Ownable {
 	mapping(address => charity) public charities;
 	//Every address has a donation profile
 	mapping(address => profile) public profiles;
+	//Every address has an amount donated
+	mapping(address => uint) public amtDonated;
     //Array of valid charities
    	address[] public validCharities;
     
@@ -20,12 +22,12 @@ contract Donator is Ownable {
         uint totalShares;//Gas efficient to keep track of total shares(?)
         uint8 numOfCharities;//Gas efficient by knowing number of charities per profile
     }
-    
+
 	struct charity {
 		bool valid;
 		uint balance;
 	}
-	
+
 	event Received(address _from, uint _amount, address indexed _charity);
 	event Sent(uint _amount, address indexed _to);
     event Withdrawal(uint _amount, address indexed _to);
@@ -33,7 +35,12 @@ contract Donator is Ownable {
     event InvalidatedCharity(address indexed _charity);
     event ModifyCharityOnProfile(address indexed _profile, uint8 _index, address indexed _charity, uint8 _shares);
     event KilledContract(uint _amount, address indexed _to);
-    
+
+	//Initial conditions
+    constructor() public {
+    	validateCharity(owner);
+    }
+
     //Careful with number of validated charities. 
     //If the number gets too large, perhaps set other contracts as proxy donation addresses to cheapen the cost of looping
 	function validateCharity(address _charity) onlyOwner public {
@@ -56,7 +63,7 @@ contract Donator is Ownable {
 		}
         emit InvalidatedCharity(_charity);
 	}
-	
+
 	function addProfileCharity(address _charity, uint8 _share) public {//Max _share size is 255
 		require(charities[_charity].valid, "Invalid charity");
 		require(profiles[msg.sender].numOfCharities < maxCharitiesPerProfile, "Already at max number of charities");
@@ -71,7 +78,7 @@ contract Donator is Ownable {
 		profiles[msg.sender].numOfCharities++;
 		emit ModifyCharityOnProfile(msg.sender, profiles[msg.sender].numOfCharities-1, _charity, _share);
 	}
-	
+
     function modifyProfileCharity(uint8 _num, address _charity, uint8 _share) public {//Max _share size is 255
 	    require(_num < profiles[msg.sender].numOfCharities, "Attempting to edit outside of array");
 	    profiles[msg.sender].charities[_num] = _charity;
@@ -89,25 +96,35 @@ contract Donator is Ownable {
 			profiles[msg.sender].numOfCharities--;
 		}
 	}
-	
+
 	function resetProfile() public {
 	    delete profiles[msg.sender];
 	}
-    
-	//Rejects potentially unintentional donations
+
+	//Doesn't update donator's balance
 	function() public payable {
 	//	require(msg.data.length == 0, "Invalid function");
 		emit Received(msg.sender, msg.value, address(this));
 	}
 
-	//TODO set up sending throuh 3rd party
 	//Direct amt donate
 	function donateWithAmt(uint _amount, address _charity) public payable {
 		checkAmount(_amount);
 		checkCharity(_charity);
 		charities[_charity].balance += _amount;
 		donationBalance += _amount;
+		amtDonated[msg.sender] += _amount;
 		emit Received(msg.sender, _amount, _charity);
+	}
+
+	//On behalf of, set to 0x0 for anonymous
+	function donateWithAmtFor(uint _amount, address _charity, address _for) public payable {
+		checkAmount(_amount);
+		checkCharity(_charity);
+		charities[_charity].balance += _amount;
+		donationBalance += _amount;
+		amtDonated[_for] += _amount;
+		emit Received(_for, _amount, _charity);
 	}
 
 	//Direct % donate
@@ -117,7 +134,18 @@ contract Donator is Ownable {
 		uint donateAmt = (msg.value * _percentage) / 100;
 		charities[_charity].balance += donateAmt;
 		donationBalance += donateAmt;
+		amtDonated[msg.sender] += donateAmt;
 		emit Received(msg.sender, donateAmt, _charity);
+	}
+
+	function donateWithPercFor(uint8 _percentage, address _charity, address _for) public payable {
+		checkCharity(_charity);
+		checkPerc(_percentage);
+		uint donateAmt = (msg.value * _percentage) / 100;
+		charities[_charity].balance += donateAmt;
+		donationBalance += donateAmt;
+		amtDonated[_for] += donateAmt;
+		emit Received(_for, donateAmt, _charity);
 	}
 
 	//Direct profile donate
@@ -141,8 +169,32 @@ contract Donator is Ownable {
 			emit Received(msg.sender, donateAmt, profiles[msg.sender].charities[i]);
 		}
 		donationBalance += donated;
+		amtDonated[msg.sender] += donated;
 	}
     
+    function donateWithProfileFor(uint _amount, address _for) public payable {
+		checkAmount(_amount);
+		require(profiles[msg.sender].totalShares > 0, "Profile requires more than 0 shares");
+		//Only possible if owner reduces maxCharitiesPerProfile
+		while(profiles[msg.sender].numOfCharities > maxCharitiesPerProfile){//can either delete profile or remove the last elements
+			profiles[msg.sender].numOfCharities -= 1;
+			//Less code than nullifyProfileCharity()
+			profiles[msg.sender].totalShares -= profiles[msg.sender].shares[profiles[msg.sender].numOfCharities];
+		    profiles[msg.sender].shares[profiles[msg.sender].numOfCharities] = 0;
+			emit ModifyCharityOnProfile(msg.sender, profiles[msg.sender].numOfCharities, profiles[msg.sender].charities[profiles[msg.sender].numOfCharities], 0);
+		}
+		uint donated;
+		for(uint8 i = 0; i < profiles[msg.sender].numOfCharities; i++){
+			checkCharity(profiles[msg.sender].charities[i]);
+			uint donateAmt = _amount * profiles[msg.sender].shares[i] / profiles[msg.sender].totalShares;
+			charities[profiles[msg.sender].charities[i]].balance += donateAmt;
+			donated += donateAmt;
+			emit Received(_for, donateAmt, profiles[msg.sender].charities[i]);
+		}
+		donationBalance += donated;
+		amtDonated[_for] += donated;
+	}
+
     //Payout all valid charities
 	function payoutAllCharities(uint _minimumPayout) public {
 		for(uint16 i = 0; i < validCharities.length; i++){
@@ -157,7 +209,7 @@ contract Donator is Ownable {
 		    emit Sent(amtToPayout, validCharities[i]);
 		}
 	}
-	
+
 	//Force payout an individual charity
 	function payoutCharity(address _charity) public {
 		checkCharity(_charity);
@@ -180,11 +232,11 @@ contract Donator is Ownable {
 	function checkPerc(uint _percentage) pure internal {
 		require(_percentage  <= 100, "Invalid percentage");
 	}
-	
+
 	function contractBalance() public view returns (uint) {
         return address(this).balance;
     }
-    
+
     function withdrawableBalance() onlyOwner public view returns (uint) {
 	    return address(this).balance - donationBalance;
 	}
@@ -195,15 +247,15 @@ contract Donator is Ownable {
 		emit Withdrawal(address(this).balance - donationBalance, msg.sender);
 	}
 
-	//If this gets too high, the contract might need to be killed
+	//Keep this low
 	function changeMaxCharitiesPerProfile(uint8 _maxCharitiesPerProfile) onlyOwner public {
    		maxCharitiesPerProfile = _maxCharitiesPerProfile;
    	}
-	
+
 	function removeEmergencyEscape() onlyOwner public {
 	    canBeDestroyed = false;
 	}
-	
+
 	//Temporary escape in case of critical error
 	function selfDestruct() onlyOwner public {
 	    require(canBeDestroyed, "Can no longer be destroyed, sorry");
