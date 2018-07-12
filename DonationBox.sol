@@ -5,6 +5,7 @@ contract DonationBox is Ownable {
     //Total donation ether (in wei) ready to send
 	uint public donationBalance;
 	uint8 public maxCharitiesPerProfile = 5;
+	//Temporary escape bool for the entire contract
 	bool internal canBeDestroyed = true;
     //Every address is a potential charity
 	mapping(address => charity) public charities;
@@ -26,6 +27,7 @@ contract DonationBox is Ownable {
 		uint balance;
 	}
 
+	//Logging
 	event Received(address _from, uint _amount, address indexed _charity);
 	event Sent(uint _amount, address indexed _to);
     event Withdrawal(uint _amount, address indexed _to);
@@ -35,6 +37,7 @@ contract DonationBox is Ownable {
     event KilledContract(uint _amount, address indexed _to);
 
 	//Initial conditions
+	//Validate charities and create initial profiles in here before launch
     constructor() public {
         validateCharity(owner);
     }
@@ -62,6 +65,7 @@ contract DonationBox is Ownable {
         emit InvalidatedCharity(_charity);
 	}
 
+	//Add charity to sender's profile
 	function addProfileCharity(address _charity, uint8 _share) public {//Max _share size is 255
 		require(charities[_charity].valid, "Invalid charity");
 		require(profiles[msg.sender].numOfCharities < maxCharitiesPerProfile, "Already at max number of charities");
@@ -78,6 +82,7 @@ contract DonationBox is Ownable {
 		emit ModifyCharityOnProfile(msg.sender, profiles[msg.sender].numOfCharities-1, _charity, _share);
 	}
 
+	//Modify charity
     function modifyProfileCharity(uint8 _num, address _charity, uint8 _share) public {//Max _share size is 255
 	    require(_num < profiles[msg.sender].numOfCharities, "Attempting to edit outside of array");
 	    profiles[msg.sender].charities[_num] = _charity;
@@ -85,6 +90,7 @@ contract DonationBox is Ownable {
 		emit ModifyCharityOnProfile(msg.sender, _num, _charity, _share);
 	}
 
+	//Nullify charity
     //Will only remove charity from "list" if you're nullifying the last "element"
 	function nullifyProfileCharity(uint8 _num) public {
 		require(_num < profiles[msg.sender].numOfCharities, "Attempting to edit outside of array");
@@ -109,6 +115,7 @@ contract DonationBox is Ownable {
 		emit Received(msg.sender, msg.value, address(this));//I don't know why this gas cost fluctuates
 	}
 
+	//Donate directly
 	function donateTo(address _charity) public payable {
 		checkCharity(_charity);
 		charities[_charity].balance += msg.value;
@@ -116,6 +123,7 @@ contract DonationBox is Ownable {
 		emit Received(msg.sender, msg.value, _charity);
 	}
 
+	//Donate through sender's profile
 	function donateWithProfile() public payable {
 		//Only possible if owner reduces maxCharitiesPerProfile
 		while(profiles[msg.sender].numOfCharities > maxCharitiesPerProfile){//can either delete profile or remove the last elements
@@ -138,6 +146,7 @@ contract DonationBox is Ownable {
 		donationBalance += donated;
 	}
 
+	//Donate through another's profile
 	function donateWithProfile(address _profile) public payable {
 		//Only possible if owner reduces maxCharitiesPerProfile
 		while(profiles[_profile].numOfCharities > maxCharitiesPerProfile){//can either delete profile or remove the last elements
@@ -194,11 +203,13 @@ contract DonationBox is Ownable {
         return address(this).balance;
     }
 
+    //Balance that is not a part of the donation pool
     function withdrawableBalance() onlyOwner public view returns (uint) {
 	    return address(this).balance - donationBalance;
 	}
 
-	function withdrawAll() onlyOwner public {
+	//Withdraw balance that is no a part of the donation pool
+	function withdrawExcess() onlyOwner public {
 	    assert(address(this).balance - donationBalance >= 0);
 		msg.sender.transfer(address(this).balance - donationBalance);
 		emit Withdrawal(address(this).balance - donationBalance, msg.sender);
@@ -209,6 +220,7 @@ contract DonationBox is Ownable {
    		maxCharitiesPerProfile = _maxCharitiesPerProfile;
    	}
 
+   	//Permanently remove temporary escape
 	function removeEmergencyEscape() onlyOwner public {
 	    canBeDestroyed = false;
 	}
