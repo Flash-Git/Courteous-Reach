@@ -1,7 +1,12 @@
 pragma solidity 0.4.24;
 
 contract DonationBox is Ownable {
-
+	/*TODO
+	-Pack values into 256bit slots (with overflow checks)
+	-Implement safemath in some places
+	-Count up numbers of shares at runtime
+	-
+	*/
     //Total donation ether (in wei) ready to send
 	uint public donationBalance;
 	uint8 public maxCharitiesPerProfile = 5;
@@ -18,13 +23,12 @@ contract DonationBox is Ownable {
     struct profile {
     	address[] charities;//Charities on profile
         uint[] shares;//Shares per Charity
-        uint totalShares;//Gas efficient to keep track of total shares(?)
-        uint8 numOfCharities;//Gas efficient by knowing number of charities per profile
     }
 
 	struct charity {
 		bool valid;
 		uint balance;
+		//uint index;//new
 	}
 
 	//Logging
@@ -68,23 +72,18 @@ contract DonationBox is Ownable {
 	//Add charity to sender's profile
 	function addProfileCharity(address _charity, uint8 _share) public {//Max _share size is 255
 		require(charities[_charity].valid, "Invalid charity");
-		require(profiles[msg.sender].numOfCharities < maxCharitiesPerProfile, "Already at max number of charities");
-		if(profiles[msg.sender].charities.length == profiles[msg.sender].numOfCharities){//Length can be bigger than numOfCharities due to resize of maxCharitiesPerProfile
-		    profiles[msg.sender].charities.push(_charity);
-		    profiles[msg.sender].shares.push(_share);
-		}else{
-		    profiles[msg.sender].charities[profiles[msg.sender].numOfCharities] = _charity;
-		    profiles[msg.sender].totalShares -= profiles[msg.sender].shares[profiles[msg.sender].numOfCharities];
-			profiles[msg.sender].shares[profiles[msg.sender].numOfCharities] = _share;
-		}
-	    profiles[msg.sender].totalShares += _share;
-		profiles[msg.sender].numOfCharities++;
-		emit ModifyCharityOnProfile(msg.sender, profiles[msg.sender].numOfCharities-1, _charity, _share);
+		require(profiles[msg.sender].charities.length < maxCharitiesPerProfile, "Already at max number of charities");
+	    profiles[msg.sender].charities.push(_charity);
+	    profiles[msg.sender].shares.push(_share);
+
+		 //   profiles[msg.sender].charities[profiles[msg.sender].numOfCharities] = _charity;
+		//	profiles[msg.sender].shares[profiles[msg.sender].numOfCharities] = _share;
+		emit ModifyCharityOnProfile(msg.sender, profiles[msg.sender].charities.length-1, _charity, _share);//TODO check length-1, i cant think rn
 	}
 
 	//Modify charity
     function modifyProfileCharity(uint8 _num, address _charity, uint8 _share) public {//Max _share size is 255
-	    require(_num < profiles[msg.sender].numOfCharities, "Attempting to edit outside of array");
+	    require(_num < profiles[msg.sender].charities.length, "Attempting to edit outside of array");
 	    profiles[msg.sender].charities[_num] = _charity;
 		profiles[msg.sender].shares[_num] = _share;
 		emit ModifyCharityOnProfile(msg.sender, _num, _charity, _share);
@@ -94,11 +93,10 @@ contract DonationBox is Ownable {
     //Will only remove charity from "list" if you're nullifying the last "element"
 	function nullifyProfileCharity(uint8 _num) public {
 		require(_num < profiles[msg.sender].numOfCharities, "Attempting to edit outside of array");
-		profiles[msg.sender].totalShares -= profiles[msg.sender].shares[_num];
 	    profiles[msg.sender].shares[_num] = 0;
 		emit ModifyCharityOnProfile(msg.sender, _num, profiles[msg.sender].charities[_num], 0);
-		if(profiles[msg.sender].numOfCharities-1 == _num){
-			profiles[msg.sender].numOfCharities--;
+		if(profiles[msg.sender].charities.length-1 == _num){
+			profiles[msg.sender].charities.length--;//TODO check this works
 		}
 	}
 
@@ -117,55 +115,42 @@ contract DonationBox is Ownable {
 
 	//Donate directly
 	function donateTo(address _charity) public payable {
+		require(msg.value > 0, "Donation requires more than 0");
 		checkCharity(_charity);
 		charities[_charity].balance += msg.value;
+		assert(donationBalance + msg.value > donationBalance);//fatal
 		donationBalance += msg.value;
 		emit Received(msg.sender, msg.value, _charity);
 	}
 
 	//Donate through sender's profile
 	function donateWithProfile() public payable {
-		//Only possible if owner reduces maxCharitiesPerProfile
-		while(profiles[msg.sender].numOfCharities > maxCharitiesPerProfile){//can either delete profile or remove the last elements
-			profiles[msg.sender].numOfCharities -= 1;
-			//Less code than nullifyProfileCharity()
-			profiles[msg.sender].totalShares -= profiles[msg.sender].shares[profiles[msg.sender].numOfCharities];
-		    profiles[msg.sender].shares[profiles[msg.sender].numOfCharities] = 0;
-			emit ModifyCharityOnProfile(msg.sender, profiles[msg.sender].numOfCharities, profiles[msg.sender].charities[profiles[msg.sender].numOfCharities], 0);
-		}
-		require(profiles[msg.sender].totalShares > 0, "Profile requires more than 0 shares");//This logic seems suboptimal
-
-		uint donated;
-		for(uint8 i = 0; i < profiles[msg.sender].numOfCharities; i++){
-			checkCharity(profiles[msg.sender].charities[i]);
-			uint donateAmt = msg.value * profiles[msg.sender].shares[i] / profiles[msg.sender].totalShares;
-			charities[profiles[msg.sender].charities[i]].balance += donateAmt;
-			donated += donateAmt;
-			emit Received(msg.sender, donateAmt, profiles[msg.sender].charities[i]);
-		}//Is creating a uint cheaper than increasing another uint x times?
-		donationBalance += donated;
+		donateWithProfile(msg.sender);
 	}
 
 	//Donate through another's profile
+	//TODO calc shares at runtime
 	function donateWithProfile(address _profile) public payable {
+		require(msg.value > 0, "Donation requires more than 0");
+		require(profiles[_profile].length < 1, "This profile is empty")
+
 		//Only possible if owner reduces maxCharitiesPerProfile
-		while(profiles[_profile].numOfCharities > maxCharitiesPerProfile){//can either delete profile or remove the last elements
-			profiles[_profile].numOfCharities -= 1;
-			//Less code than nullifyProfileCharity()
-			profiles[_profile].totalShares -= profiles[_profile].shares[profiles[_profile].numOfCharities];
-		    profiles[_profile].shares[profiles[_profile].numOfCharities] = 0;
-			emit ModifyCharityOnProfile(_profile, profiles[_profile].numOfCharities, profiles[_profile].charities[profiles[_profile].numOfCharities], 0);
+		while(profiles[_profile].charities.length > maxCharitiesPerProfile){//can either delete profile or remove the last elements
+			profiles[_profile].charities.length--;
+		    profiles[_profile].shares[profiles[_profile].charities.length] = 0;
+			emit ModifyCharityOnProfile(_profile, profiles[_profile].charities.length, profiles[_profile].charities[profiles[_profile].charities.length], 0);
 		}
-		require(profiles[_profile].totalShares > 0, "Profile requires more than 0 shares");//This logic seems suboptimal
+		require(profiles[_profile].getTotalShares > 0, "Profile requires more than 0 shares");//This logic seems suboptimal
 
 		uint donated;
-		for(uint8 i = 0; i < profiles[_profile].numOfCharities; i++){
+		for(uint8 i = 0; i < profiles[_profile].charities.length; i++){
 			checkCharity(profiles[_profile].charities[i]);
-			uint donateAmt = msg.value * profiles[_profile].shares[i] / profiles[_profile].totalShares;
+			uint donateAmt = msg.value * profiles[_profile].shares[i] / profiles[_profile].getTotalShares(_profile);
 			charities[profiles[_profile].charities[i]].balance += donateAmt;
 			donated += donateAmt;
 			emit Received(msg.sender, donateAmt, profiles[_profile].charities[i]);
 		}//Is creating a uint cheaper than increasing another uint x times?
+		assert(donationBalance + donated > donationBalance);//fatal
 		donationBalance += donated;
 	}
 
@@ -178,6 +163,7 @@ contract DonationBox is Ownable {
 				continue;
 			}
 		    charities[validCharities[i]].balance = 0;
+		    assert(donationBalance - amtToPayout < donationBalance);//fatal
 		    donationBalance -= amtToPayout;
 		    validCharities[i].transfer(amtToPayout);
 		    emit Sent(amtToPayout, validCharities[i]);
@@ -189,6 +175,7 @@ contract DonationBox is Ownable {
 		checkCharity(_charity);
 		uint amtToPayout = charities[_charity].balance;
 		charities[_charity].balance = 0;
+		assert(donationBalance - amtToPayout < donationBalance);//fatal
 	    donationBalance -= amtToPayout;
 		_charity.transfer(amtToPayout);
 		emit Sent(amtToPayout, _charity);
@@ -197,6 +184,15 @@ contract DonationBox is Ownable {
 	//Is it more efficient to have these repeated without functions?
     function checkCharity(address _charity) view internal {
 		require(charities[_charity].valid, "Invalid charity");
+	}
+
+	function getTotalShares(address _profile) public view returns (uint) {
+		//TODO code
+		uint shares;
+		for(uint i = 0; i < profiles[_profile].charities.length; i++){
+			shares += profiles[_profile].charities[i];
+		}
+		return shares;
 	}
 
 	function contractBalance() public view returns (uint) {
