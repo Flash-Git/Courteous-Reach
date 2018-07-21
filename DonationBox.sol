@@ -1,11 +1,10 @@
 pragma solidity 0.4.24;
 
-
 contract DonationBox is Ownable {
 	/*TODO
 	-Pack values into 256bit slots (with overflow checks)
 	-Implement safemath in some places
-	-Count up numbers of shares at runtime
+	-
 	-
 	*/
     //Total donation ether (in wei) ready to send
@@ -18,7 +17,7 @@ contract DonationBox is Ownable {
 	//Every address has a donation profile
 	mapping(address => profile) internal profiles;//can't be public?
     //Array of valid charities
-   	address[] public validCharities;
+   	address[] public validCharities;//is not functionally 0 based
     
 	//Donations done with profile are split between the chosen charities based on shares        
     struct profile {
@@ -27,9 +26,8 @@ contract DonationBox is Ownable {
     }
 
 	struct charity {
-		bool valid;
+		uint index;//index of charity in validCharities, 0 for not valid
 		uint balance;
-		//uint index;//new
 	}
 
 	//Logging
@@ -44,35 +42,37 @@ contract DonationBox is Ownable {
 	//Initial conditions
 	//Validate charities and create initial profiles in here before launch
     constructor() public {
+        validCharities.push(address(0x0));//dummy charity to take up profiles[profile].charities[0]
         validateCharity(owner);
     }
 
     //Careful with number of validated charities. 
     //If the number gets too large, perhaps set other contracts as proxy donation addresses to cheapen the cost of looping
 	function validateCharity(address _charity) onlyOwner public {
-	    require(!charities[_charity].valid, "Attempting to validate a valid charity");
-		charities[_charity].valid = true;
+	    require(charities[_charity].index == 0, "Attempting to validate a valid charity");
 		validCharities.push(_charity);
+		charities[_charity].index = validCharities.length-1;
 		emit ValidatedCharity(_charity);
 	}
 
 	function invalidateCharity(address _charity) onlyOwner public {
-	    require(charities[_charity].valid, "Attempting to invalidate an invalid charity");
-		charities[_charity].valid = false;
-		//Replace the invalid charity with the last charity
-		for(uint16 i = 0; i < validCharities.length; i++){
-			if(validCharities[i] == _charity){
-				validCharities[i] = validCharities[validCharities.length-1];
-				validCharities.length--;//shortening length does delete the omitted element
-				break;
-			}
-		}
+	    require(charities[_charity].index != 0, "Attempting to invalidate an invalid charity");
+
+        //Set index of last charity in validCharities to the index of invalidatedCharity
+		charities[validCharities[validCharities.length-1]].index = charities[_charity].index;
+		//Replace invalidatedCharity with last charity in validCharities
+		validCharities[charities[_charity].index] = validCharities[validCharities.length-1];
+		//Shorten length of validCharities to delete the last charity
+		validCharities.length--;
+		
+		//Set index of invalidatedCharity to 0
+		charities[_charity].index = 0;
         emit InvalidatedCharity(_charity);
 	}
 
 	//Add charity to sender's profile
 	function addProfileCharity(address _charity, uint8 _share) public {//Max _share size is 255
-		require(charities[_charity].valid, "Invalid charity");
+		checkCharity(_charity);
 		require(profiles[msg.sender].charities.length < maxCharitiesPerProfile, "Already at max number of charities");
 	    profiles[msg.sender].charities.push(_charity);
 	    profiles[msg.sender].shares.push(_share);
@@ -84,6 +84,7 @@ contract DonationBox is Ownable {
 
 	//Modify charity
     function modifyProfileCharity(uint8 _num, address _charity, uint8 _share) public {//Max _share size is 255
+        checkCharity(_charity);
 	    require(_num < profiles[msg.sender].charities.length, "Attempting to edit outside of array");
 	    profiles[msg.sender].charities[_num] = _charity;
 		profiles[msg.sender].shares[_num] = _share;
@@ -185,7 +186,7 @@ contract DonationBox is Ownable {
 
 	//Is it more efficient to have these repeated without functions?
     function checkCharity(address _charity) view internal {
-		require(charities[_charity].valid, "Invalid charity");
+		require(charities[_charity].index != 0, "Invalid charity");
 	}
 
 	function getTotalShares(address _profile) public view returns (uint16) {
