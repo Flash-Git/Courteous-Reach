@@ -1,5 +1,6 @@
 pragma solidity 0.4.24;
 
+
 contract DonationBox is Ownable {
 	/*TODO
 	-Pack values into 256bit slots (with overflow checks)
@@ -15,14 +16,14 @@ contract DonationBox is Ownable {
     //Every address is a potential charity
 	mapping(address => charity) public charities;
 	//Every address has a donation profile
-	mapping(address => profile) public profiles;
+	mapping(address => profile) internal profiles;//can't be public?
     //Array of valid charities
    	address[] public validCharities;
     
 	//Donations done with profile are split between the chosen charities based on shares        
     struct profile {
     	address[] charities;//Charities on profile
-        uint[] shares;//Shares per Charity
+        uint8[] shares;//Shares per Charity
     }
 
 	struct charity {
@@ -78,7 +79,7 @@ contract DonationBox is Ownable {
 
 		 //   profiles[msg.sender].charities[profiles[msg.sender].numOfCharities] = _charity;
 		//	profiles[msg.sender].shares[profiles[msg.sender].numOfCharities] = _share;
-		emit ModifyCharityOnProfile(msg.sender, profiles[msg.sender].charities.length-1, _charity, _share);//TODO check length-1, i cant think rn
+		emit ModifyCharityOnProfile(msg.sender, uint8(profiles[msg.sender].charities.length-1), _charity, _share);//TODO check length-1, i cant think rn
 	}
 
 	//Modify charity
@@ -92,7 +93,7 @@ contract DonationBox is Ownable {
 	//Nullify charity
     //Will only remove charity from "list" if you're nullifying the last "element"
 	function nullifyProfileCharity(uint8 _num) public {
-		require(_num < profiles[msg.sender].numOfCharities, "Attempting to edit outside of array");
+		require(_num < profiles[msg.sender].charities.length, "Attempting to edit outside of array");
 	    profiles[msg.sender].shares[_num] = 0;
 		emit ModifyCharityOnProfile(msg.sender, _num, profiles[msg.sender].charities[_num], 0);
 		if(profiles[msg.sender].charities.length-1 == _num){
@@ -132,20 +133,21 @@ contract DonationBox is Ownable {
 	//TODO calc shares at runtime
 	function donateWithProfile(address _profile) public payable {
 		require(msg.value > 0, "Donation requires more than 0");
-		require(profiles[_profile].length < 1, "This profile is empty")
+		require(profiles[_profile].charities.length < 1, "This profile is empty");
 
 		//Only possible if owner reduces maxCharitiesPerProfile
 		while(profiles[_profile].charities.length > maxCharitiesPerProfile){//can either delete profile or remove the last elements
 			profiles[_profile].charities.length--;
 		    profiles[_profile].shares[profiles[_profile].charities.length] = 0;
-			emit ModifyCharityOnProfile(_profile, profiles[_profile].charities.length, profiles[_profile].charities[profiles[_profile].charities.length], 0);
+			emit ModifyCharityOnProfile(_profile, uint8(profiles[_profile].charities.length), profiles[_profile].charities[profiles[_profile].charities.length], 0);
 		}
-		require(profiles[_profile].getTotalShares > 0, "Profile requires more than 0 shares");//This logic seems suboptimal
+		uint16 totalShares = getTotalShares(_profile);
+		require(totalShares > 0, "Profile requires more than 0 shares");//This logic seems suboptimal
 
 		uint donated;
 		for(uint8 i = 0; i < profiles[_profile].charities.length; i++){
 			checkCharity(profiles[_profile].charities[i]);
-			uint donateAmt = msg.value * profiles[_profile].shares[i] / profiles[_profile].getTotalShares(_profile);
+			uint donateAmt = msg.value * profiles[_profile].shares[i] / totalShares;
 			charities[profiles[_profile].charities[i]].balance += donateAmt;
 			donated += donateAmt;
 			emit Received(msg.sender, donateAmt, profiles[_profile].charities[i]);
@@ -186,11 +188,10 @@ contract DonationBox is Ownable {
 		require(charities[_charity].valid, "Invalid charity");
 	}
 
-	function getTotalShares(address _profile) public view returns (uint) {
-		//TODO code
-		uint shares;
-		for(uint i = 0; i < profiles[_profile].charities.length; i++){
-			shares += profiles[_profile].charities[i];
+	function getTotalShares(address _profile) public view returns (uint16) {
+		uint16 shares;
+		for(uint8 i = 0; i < profiles[_profile].charities.length; i++){
+			shares += profiles[_profile].shares[i];
 		}
 		return shares;
 	}
