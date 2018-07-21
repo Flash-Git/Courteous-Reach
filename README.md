@@ -26,3 +26,5 @@ A traditional offchain website will be set up to allow users to visualise the do
 
 ### FUTURE
 Support for more than just the Ethereum ecosystem.
+
+Add incentives for people to donate (2 way interaction with the greater ecosystem?)
