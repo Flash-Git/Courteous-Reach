@@ -4,7 +4,7 @@ contract DonationBox is Ownable {
 	/*TODO
 	-Pack values into 256bit slots (with overflow checks)
 	-Implement safemath in some places
-	-
+	-Handle extra balance better
 	-
 	*/
     //Total donation ether (in wei) ready to send
@@ -71,6 +71,7 @@ contract DonationBox is Ownable {
 	}
 
 	//Add charity to sender's profile
+	//TODO handle duplicates
 	function addProfileCharity(address _charity, uint8 _share) public {//Max _share size is 255
 		checkCharity(_charity);
 		require(profiles[msg.sender].charities.length < maxCharitiesPerProfile, "Already at max number of charities");
@@ -134,7 +135,7 @@ contract DonationBox is Ownable {
 	//TODO calc shares at runtime
 	function donateWithProfile(address _profile) public payable {
 		require(msg.value > 0, "Donation requires more than 0");
-		require(profiles[_profile].charities.length < 1, "This profile is empty");
+		require(profiles[_profile].charities.length > 0, "This profile is empty");
 
 		//Only possible if owner reduces maxCharitiesPerProfile
 		while(profiles[_profile].charities.length > maxCharitiesPerProfile){//can either delete profile or remove the last elements
@@ -185,11 +186,11 @@ contract DonationBox is Ownable {
 	}
 
 	//Is it more efficient to have these repeated without functions?
-    function checkCharity(address _charity) view internal {
+    function checkCharity(address _charity) view private {
 		require(charities[_charity].index != 0, "Invalid charity");
 	}
 
-	function getTotalShares(address _profile) public view returns (uint16) {
+	function getTotalShares(address _profile) private view returns (uint16) {
 		uint16 shares;
 		for(uint8 i = 0; i < profiles[_profile].charities.length; i++){
 			shares += profiles[_profile].shares[i];
