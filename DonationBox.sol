@@ -4,7 +4,6 @@ contract DonationBox is Ownable {
 	/*TODO
 	-Pack values into 256bit slots (with overflow checks)
 	-Implement safemath in some places
-	-Handle extra balance better
 	-
 	*/
     //Total donation ether (in wei) ready to send
@@ -70,23 +69,36 @@ contract DonationBox is Ownable {
         emit InvalidatedCharity(_charity);
 	}
 
+    //TODO
+    function setProfile(bytes data) public {
+        //TODO parse data
+        //skip the indices that are unchanged
+        //pull the 
+        uint8 startingIndex;
+        require(startingIndex+newCharities.length < maxCharitiesPerProfile, "Attempting to edit out of bounds");
+        address[] memory newCharities;
+        uint8[] memory newShares;
+        for(uint8 i = startingIndex; i < startingIndex+newCharities.length; i++){
+            modifyProfileCharity(i, newCharities[i], newShares[i]);
+        }
+    }
+
 	//Add charity to sender's profile
-	//TODO handle duplicates
-	function addProfileCharity(address _charity, uint8 _share) public {//Max _share size is 255
+	function addProfileCharity(address _charity, uint8 _share) private {//Max _share size is 255
 		checkCharity(_charity);
 		require(profiles[msg.sender].charities.length < maxCharitiesPerProfile, "Already at max number of charities");
 	    profiles[msg.sender].charities.push(_charity);
 	    profiles[msg.sender].shares.push(_share);
-
-		 //   profiles[msg.sender].charities[profiles[msg.sender].numOfCharities] = _charity;
-		//	profiles[msg.sender].shares[profiles[msg.sender].numOfCharities] = _share;
 		emit ModifyCharityOnProfile(msg.sender, uint8(profiles[msg.sender].charities.length-1), _charity, _share);//TODO check length-1, i cant think rn
 	}
 
-	//Modify charity
+	//Modify charity on sender's profile, using _num prevents unwanted duplicates
     function modifyProfileCharity(uint8 _num, address _charity, uint8 _share) public {//Max _share size is 255
+        if(_num >= profiles[msg.sender].charities.length){
+            addProfileCharity(_charity, _share);
+            return;
+        }
         checkCharity(_charity);
-	    require(_num < profiles[msg.sender].charities.length, "Attempting to edit outside of array");
 	    profiles[msg.sender].charities[_num] = _charity;
 		profiles[msg.sender].shares[_num] = _share;
 		emit ModifyCharityOnProfile(msg.sender, _num, _charity, _share);
@@ -143,17 +155,19 @@ contract DonationBox is Ownable {
 		    profiles[_profile].shares[profiles[_profile].charities.length] = 0;
 			emit ModifyCharityOnProfile(_profile, uint8(profiles[_profile].charities.length), profiles[_profile].charities[profiles[_profile].charities.length], 0);
 		}
-		uint16 totalShares = getTotalShares(_profile);
-		require(totalShares > 0, "Profile requires more than 0 shares");//This logic seems suboptimal
+		require(getTotalShares(_profile) > 0, "Profile requires more than 0 shares");//This logic seems suboptimal
 
 		uint donated;
 		for(uint8 i = 0; i < profiles[_profile].charities.length; i++){
 			checkCharity(profiles[_profile].charities[i]);
-			uint donateAmt = msg.value * profiles[_profile].shares[i] / totalShares;
+			uint donateAmt = msg.value * profiles[_profile].shares[i] / getTotalShares(_profile);
 			charities[profiles[_profile].charities[i]].balance += donateAmt;
 			donated += donateAmt;
 			emit Received(msg.sender, donateAmt, profiles[_profile].charities[i]);
 		}//Is creating a uint cheaper than increasing another uint x times?
+        charities[profiles[_profile].charities[0]].balance += (msg.value-donated);//catch lost eth
+		donated += (msg.value-donated);
+		assert(msg.value - donated == 0);
 		assert(donationBalance + donated > donationBalance);//fatal
 		donationBalance += donated;
 	}
