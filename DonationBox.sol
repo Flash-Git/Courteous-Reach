@@ -7,7 +7,7 @@ contract DonationBox is Ownable {
 	-
 	*/
     //Total donation ether (in wei) ready to send
-	uint public donationBalance;
+	uint248 public donationBalance;//storage?
 	uint8 public maxCharitiesPerProfile = 5;
 	//Temporary escape bool for the entire contract
 	bool internal canBeDestroyed = true;
@@ -18,15 +18,17 @@ contract DonationBox is Ownable {
     //Array of valid charities
    	address[] public validCharities;//is not functionally 0 based
     
-	//Donations done with profile are split between the chosen charities based on shares        
+	//Donations done with profile are split between the chosen charities based on shares      
     struct profile {
+    	//As address is 20bytes, does using uint 96 make a difference anywhere?
     	address[] charities;//Charities on profile
         uint8[] shares;//Shares per Charity
     }
 
 	struct charity {
-		uint index;//index of charity in validCharities, 0 for not valid
-		uint balance;
+		//Sized for tight packing
+		uint16 index;//index of charity in validCharities, 0 for not valid
+		uint240 balance;
 	}
 
 	//Logging
@@ -45,7 +47,7 @@ contract DonationBox is Ownable {
         validateCharity(owner);
     }
 
-    //Careful with number of validated charities. 
+    //Careful with number of validated charities
     //If the number gets too large, perhaps set other contracts as proxy donation addresses to cheapen the cost of looping
 	function validateCharity(address _charity) onlyOwner public {
 	    require(charities[_charity].index == 0, "Attempting to validate a valid charity");
@@ -69,18 +71,16 @@ contract DonationBox is Ownable {
         emit InvalidatedCharity(_charity);
 	}
 
-    //TODO
-    function setProfile(bytes data) public {
-        //TODO parse data
-        //skip the indices that are unchanged
-        //pull the 
-        uint8 startingIndex;
-        require(startingIndex+newCharities.length < maxCharitiesPerProfile, "Attempting to edit out of bounds");
-        address[] memory newCharities;
-        uint8[] memory newShares;
-        for(uint8 i = startingIndex; i < startingIndex+newCharities.length; i++){
-            modifyProfileCharity(i, newCharities[i], newShares[i]);
+    function setProfile(address[] _charities, uint8[] _shares) public {
+    	require(_charities.length <= maxCharitiesPerProfile, "Invalid number of charities");
+    	require(_charities.length == _shares.length, "Incompatible array sizes");
+    	
+        for(uint8 i = 0; i < _charities.length; i++){
+        	modifyProfileCharity(i, _charities[i], _shares[i]);
         }
+    	//TODO check optimisation in case where profile already has profile and this new profile is smaller than previous profile
+        profiles[msg.sender].charities.length = _charities.length;//check cost of this operation vs check + operation
+        profiles[msg.sender].shares.length = _charities.length;//check cost of this operation vs check + operation
     }
 
 	//Add charity to sender's profile
