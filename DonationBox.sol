@@ -32,13 +32,13 @@ contract DonationBox is Ownable {
 	}
 
 	//Logging
-	event Received(address _from, uint _amount, address indexed _charity);
-	event Sent(uint _amount, address indexed _to);
-    event Withdrawal(uint _amount, address indexed _to);
-    event ValidatedCharity(address indexed _charity);
-    event InvalidatedCharity(address indexed _charity);
-    event ModifyCharityOnProfile(address indexed _profile, uint8 _index, address indexed _charity, uint8 _shares);
-    event KilledContract(uint _amount, address indexed _to);
+	event EthReceived(address _from, uint _amount, address indexed _charity);
+	event EthSent(uint _amount, address indexed _to);
+    event EthWithdrawn(uint _amount, address indexed _to);
+    event CharityValidated(address indexed _charity);
+    event CharityInvalidated(address indexed _charity);
+    event ProfileModified(address indexed _profile, uint8 _index, address indexed _charity, uint8 _shares);
+    event ContractKilled(uint _amount, address indexed _to);
 
 	//Initial conditions
 	//Validate charities and create initial profiles in here before launch
@@ -53,7 +53,7 @@ contract DonationBox is Ownable {
 	    require(charities[_charity].index == 0, "Attempting to validate a valid charity");
 		validCharities.push(_charity);
 		charities[_charity].index = validCharities.length-1;
-		emit ValidatedCharity(_charity);
+		emit CharityValidated(_charity);
 	}
 
 	function invalidateCharity(address _charity) onlyOwner public {
@@ -68,13 +68,13 @@ contract DonationBox is Ownable {
 		
 		//Set index of invalidatedCharity to 0
 		charities[_charity].index = 0;
-        emit InvalidatedCharity(_charity);
+        emit CharityInvalidated(_charity);
 	}
 
     function setProfile(address[] _charities, uint8[] _shares) public {
     	require(_charities.length <= maxCharitiesPerProfile, "Invalid number of charities");
     	require(_charities.length == _shares.length, "Incompatible array sizes");
-    	
+
         for(uint8 i = 0; i < _charities.length; i++){
         	modifyProfileCharity(i, _charities[i], _shares[i]);
         }
@@ -89,7 +89,7 @@ contract DonationBox is Ownable {
 		require(profiles[msg.sender].charities.length < maxCharitiesPerProfile, "Already at max number of charities");
 	    profiles[msg.sender].charities.push(_charity);
 	    profiles[msg.sender].shares.push(_share);
-		emit ModifyCharityOnProfile(msg.sender, uint8(profiles[msg.sender].charities.length-1), _charity, _share);//TODO check length-1, i cant think rn
+		emit ProfileModified(msg.sender, uint8(profiles[msg.sender].charities.length-1), _charity, _share);//TODO check length-1, i cant think rn
 	}
 
 	//Modify charity on sender's profile, using _num prevents unwanted duplicates
@@ -101,7 +101,7 @@ contract DonationBox is Ownable {
         checkCharity(_charity);
 	    profiles[msg.sender].charities[_num] = _charity;
 		profiles[msg.sender].shares[_num] = _share;
-		emit ModifyCharityOnProfile(msg.sender, _num, _charity, _share);
+		emit ProfileModified(msg.sender, _num, _charity, _share);
 	}
 
 	//Nullify charity
@@ -109,7 +109,7 @@ contract DonationBox is Ownable {
 	function nullifyProfileCharity(uint8 _num) public {
 		require(_num < profiles[msg.sender].charities.length, "Attempting to edit outside of array");
 	    profiles[msg.sender].shares[_num] = 0;
-		emit ModifyCharityOnProfile(msg.sender, _num, profiles[msg.sender].charities[_num], 0);
+		emit ProfileModified(msg.sender, _num, profiles[msg.sender].charities[_num], 0);
 		if(profiles[msg.sender].charities.length-1 == _num){
 			profiles[msg.sender].charities.length--;//TODO check this works
 		}
@@ -125,17 +125,17 @@ contract DonationBox is Ownable {
 
 	//Doesn't update donator's balance
 	function() public payable {
-		emit Received(msg.sender, msg.value, address(this));//I don't know why this gas cost fluctuates
+		emit EthReceived(msg.sender, msg.value, address(this));//I don't know why this gas cost fluctuates
 	}
 
 	//Donate directly
 	function donateTo(address _charity) public payable {
 		require(msg.value > 0, "Donation requires more than 0");
 		checkCharity(_charity);
-		charities[_charity].balance += msg.value;
-		assert(donationBalance + msg.value > donationBalance);//fatal
-		donationBalance += msg.value;
-		emit Received(msg.sender, msg.value, _charity);
+		charities[_charity].balance += uint240(msg.value);
+		assert(donationBalance + uint248(msg.value) > donationBalance);//fatal
+		donationBalance += uint248(msg.value);
+		emit EthReceived(msg.sender, msg.value, _charity);
 	}
 
 	//Donate through sender's profile
@@ -153,7 +153,7 @@ contract DonationBox is Ownable {
 		while(profiles[_profile].charities.length > maxCharitiesPerProfile){//can either delete profile or remove the last elements
 			profiles[_profile].charities.length--;
 		    profiles[_profile].shares[profiles[_profile].charities.length] = 0;
-			emit ModifyCharityOnProfile(_profile, uint8(profiles[_profile].charities.length), profiles[_profile].charities[profiles[_profile].charities.length], 0);
+			emit ProfileModified(_profile, uint8(profiles[_profile].charities.length), profiles[_profile].charities[profiles[_profile].charities.length], 0);
 		}
 		require(getTotalShares(_profile) > 0, "Profile requires more than 0 shares");//This logic seems suboptimal
 
@@ -163,7 +163,7 @@ contract DonationBox is Ownable {
 			uint donateAmt = msg.value * profiles[_profile].shares[i] / getTotalShares(_profile);
 			charities[profiles[_profile].charities[i]].balance += donateAmt;
 			donated += donateAmt;
-			emit Received(msg.sender, donateAmt, profiles[_profile].charities[i]);
+			emit EthReceived(msg.sender, donateAmt, profiles[_profile].charities[i]);
 		}//Is creating a uint cheaper than increasing another uint x times?
         charities[profiles[_profile].charities[0]].balance += (msg.value-donated);//catch lost eth
 		donated += (msg.value-donated);
@@ -184,7 +184,7 @@ contract DonationBox is Ownable {
 		    assert(donationBalance - amtToPayout < donationBalance);//fatal
 		    donationBalance -= amtToPayout;
 		    validCharities[i].transfer(amtToPayout);
-		    emit Sent(amtToPayout, validCharities[i]);
+		    emit EthSent(amtToPayout, validCharities[i]);
 		}
 	}
 
@@ -196,7 +196,7 @@ contract DonationBox is Ownable {
 		assert(donationBalance - amtToPayout < donationBalance);//fatal
 	    donationBalance -= amtToPayout;
 		_charity.transfer(amtToPayout);
-		emit Sent(amtToPayout, _charity);
+		emit EthSent(amtToPayout, _charity);
 	}
 
 	//Is it more efficient to have these repeated without functions?
@@ -223,9 +223,10 @@ contract DonationBox is Ownable {
 
 	//Withdraw balance that is no a part of the donation pool
 	function withdrawExcess() onlyOwner public {
-	    assert(address(this).balance - donationBalance >= 0);
-		msg.sender.transfer(address(this).balance - donationBalance);
-		emit Withdrawal(address(this).balance - donationBalance, msg.sender);
+	    uint excess = address(this).balance - donationBalance;
+	    assert(excess >= 0);
+		msg.sender.transfer(excess);
+		emit EthWithdrawn(excess, msg.sender);
 	}
 
 	//Keep this low
@@ -241,7 +242,7 @@ contract DonationBox is Ownable {
 	//Temporary escape in case of critical error
 	function selfDestruct() onlyOwner public {
 	    require(canBeDestroyed, "Can no longer be destroyed, sorry");
-	    emit KilledContract(address(this).balance, msg.sender);
+	    emit ContractKilled(address(this).balance, msg.sender);
 	    selfdestruct(owner);
 	}
 
