@@ -1,5 +1,11 @@
 pragma solidity 0.4.24;
 
+/*
+* Author: Flash
+* Date: 20/08/2018
+* Version: 1.0
+*/
+
 contract DonationBox is Ownable {
 	/*
 	* TODO
@@ -9,7 +15,7 @@ contract DonationBox is Ownable {
 	*/
 
 	//Total donation ether (in wei) ready to send
-	uint248 public donationBalance;//storage?
+	uint96 public donationBalance;//storage?
 	uint8 public profileSize = 5;
 	//Temporary escape bool for the entire contract
 	bool internal canBeDestroyed = true;
@@ -17,8 +23,8 @@ contract DonationBox is Ownable {
 	mapping(address => charity) public charities;
 	//Every address has a donation profile
 	mapping(address => profile) internal profiles;//can't be public?
-	//Array of valid charities
-	address[] public validCharities;//is not functionally 0 based
+	//Array of valid charities, can handle up to 2**16 of them
+	address[] public validCharities;//is not functionally 0 based TODO handle unlimited size
 
 	//Donations done with profile are split between the chosen charities based on shares      
 	struct profile {
@@ -28,19 +34,19 @@ contract DonationBox is Ownable {
 	}
 
 	struct charity {
-		//Sized for tight packing
-		uint16 index;//index of charity in validCharities, 0 for not valid
-		uint240 balance;
+		//Sized for tight packing, better to add up to 256?
+		uint16 index;//index of charity in validCharities, 0 for invalid
+		uint96 balance;
 	}
 
 	//Logging
-	event EthReceived(address _from, uint _amount, address indexed _charity);
-	event EthSent(uint _amount, address indexed _to);
-	event EthWithdrawn(uint _amount, address indexed _to);
+	event EthReceived(address _from, uint96 _amount, address indexed _charity);
+	event EthSent(uint96 _amount, address indexed _to);
+	event EthWithdrawn(uint96 _amount, address indexed _to);
 	event CharityValidated(address indexed _charity);
 	event CharityInvalidated(address indexed _charity);
 	event ProfileModified(address indexed _profile, uint8 _index, address indexed _charity, uint8 _shares);
-	event ContractKilled(uint _amount, address indexed _to);
+	event ContractKilled(uint96 _amount, address indexed _to);
 
 	//Initial conditions
 	//Validate charities and create initial profiles in here before launch
@@ -53,6 +59,7 @@ contract DonationBox is Ownable {
 	//If the number gets too large, perhaps set other contracts as proxy donation addresses to cheapen the cost of looping
 	function validateCharity(address _charity) onlyOwner public {
 		require(charities[_charity].index == 0, "Attempting to validate a valid charity");
+		require(validCharities.length < 65536-1, "Array of valid charities is full");//TODO check overflow
 
 		validCharities.push(_charity);
 		charities[_charity].index = uint16(validCharities.length-1);
@@ -81,9 +88,13 @@ contract DonationBox is Ownable {
 		for(uint8 i = 0; i < _charities.length; i++){
 			modifyProfileCharity(i, _charities[i], _shares[i]);
 		}
-		for(uint8 j = uint8(_charities.length); j < profileSize; j++){//fixed in 0.5.0
-			nullifyProfileCharity(j);
+		for(i = uint8(_charities.length); i < profileSize; i++){//Reinitialise i in 0.5.0
+			nullifyProfileCharity(i);
 		}
+	}
+
+	function deleteProfile() public {
+		delete profiles[msg.sender];
 	}
 
 	//Modify charity on sender's profile, using _num prevents unwanted duplicates
@@ -97,14 +108,16 @@ contract DonationBox is Ownable {
 	}
 
 	//Add charity to sender's profile, will occupy first slot where shares == 0
-	function addProfileCharity(address _charity, uint8 _share) private {//Max _share size is 255
+	function addProfileCharity(address _charity, uint8 _share) public {//Max _share size is 255
+		require(_share > 0, "Shares must be larger than 0");
+
 		for(uint8 i = 0; i < profileSize; i++){
 			if(profiles[msg.sender].shares[i] == 0){
 				modifyProfileCharity(i, _charity, _share);
 				return;
 			}
 		}
-		revert();
+		revert("No space for new charity on profile");
 	}
 
 	//Nullify charity on sender's profile by setting shares to 0
@@ -125,7 +138,7 @@ contract DonationBox is Ownable {
 
 	//Doesn't update donator's balance
 	function() public payable {
-		emit EthReceived(msg.sender, msg.value, address(this));//I don't know why this gas cost fluctuates
+		emit EthReceived(msg.sender, uint96(msg.value), address(this));//I don't know why this gas cost fluctuates
 	}
 
 	//Donate directly
@@ -133,10 +146,9 @@ contract DonationBox is Ownable {
 		require(msg.value > 0, "Donation must be larger than 0");
 		checkCharity(_charity);
 
-		charities[_charity].balance += uint240(msg.value);
-		require(donationBalance + msg.value > donationBalance);//fatal
-		donationBalance += uint240(msg.value);
-		emit EthReceived(msg.sender, msg.value, _charity);
+		charities[_charity].balance += uint96(msg.value);
+		donationBalance += uint96(msg.value);
+		emit EthReceived(msg.sender, uint96(msg.value), _charity);
 	}
 
 	//Donate through sender's profile
@@ -147,39 +159,38 @@ contract DonationBox is Ownable {
 	//Donate through another's profile
 	function donateWithProfile(address _profile) public payable {
 		require(msg.value > 0, "Donation must be larger than 0");
-		require(profiles[_profile].charities.length > 0, "Profile is empty");
 		uint16 totalShares = getTotalShares(_profile);
 		require(getTotalShares(_profile) > 0, "Profile requires more than 0 shares");
 
-		uint240 donated;
+		uint96 donated;
 		for(uint8 i = 0; i < profileSize; i++){
 			checkCharity(profiles[_profile].charities[i]);
-			uint240 donateAmt = uint240(msg.value) * profiles[_profile].shares[i] / getTotalShares(_profile);
+			uint96 donateAmt = uint96(msg.value) * profiles[_profile].shares[i] / getTotalShares(_profile);//TODO verify overflow
 			charities[profiles[_profile].charities[i]].balance += donateAmt;
 			donated += donateAmt;
 			emit EthReceived(msg.sender, donateAmt, profiles[_profile].charities[i]);
-			if(totalShares == 0){
+			if((totalShares-=profiles[_profile].shares[i]) == 0){//Exit loop early if end of profile shares == 0
 				break;
 			}
 		}//Is creating a uint cheaper than increasing another uint x times?
-		charities[profiles[_profile].charities[0]].balance += (uint240(msg.value)-donated);//catch lost eth
-		donated += (uint240(msg.value)-donated);
+		charities[profiles[_profile].charities[0]].balance += (uint96(msg.value)-donated);//catch lost eth
+		donated += (uint96(msg.value)-donated);
 		require(msg.value - donated == 0);
-		require(donationBalance + donated > donationBalance);//fatal
+		assert(donationBalance + donated > donationBalance);//fatal
 		donationBalance += donated;
 	}
 
 	//Payout all valid charities
 	function payoutAllCharities(uint _minimumPayout) public {
-		for(uint16 i = 0; i < validCharities.length; i++){
+		for(uint16 i = 1; i < validCharities.length; i++){
 			checkCharity(validCharities[i]);
 
-			uint240 amtToPayout = charities[validCharities[i]].balance; 
+			uint96 amtToPayout = charities[validCharities[i]].balance; 
 			if(amtToPayout < _minimumPayout || amtToPayout == 0){
 				continue;
 			}
 			charities[validCharities[i]].balance = 0;
-			require(donationBalance - amtToPayout < donationBalance);//fatal
+			assert(donationBalance - amtToPayout < donationBalance);//fatal
 			donationBalance -= amtToPayout;
 			validCharities[i].transfer(amtToPayout);
 			emit EthSent(amtToPayout, validCharities[i]);
@@ -189,23 +200,22 @@ contract DonationBox is Ownable {
 	//Force payout an individual charity
 	function payoutCharity(address _charity) public {
 		checkCharity(_charity);
-		
-		uint240 amtToPayout = charities[_charity].balance;
+
+		uint96 amtToPayout = charities[_charity].balance;
 		charities[_charity].balance = 0;
-		require(donationBalance - amtToPayout < donationBalance);//fatal
+		assert(donationBalance - amtToPayout < donationBalance);//fatal
 		donationBalance -= amtToPayout;
 		_charity.transfer(amtToPayout);
 		emit EthSent(amtToPayout, _charity);
 	}
 
-	//Is it more efficient to have these repeated without functions?
 	function checkCharity(address _charity) view private {
 		require(charities[_charity].index != 0, "Invalid charity");
 	}
 
 	function getTotalShares(address _profile) private view returns (uint16) {
 		uint16 shares;
-		for(uint8 i = 0; i < profiles[_profile].charities.length; i++){
+		for(uint8 i = 0; i < profileSize; i++){
 			shares += profiles[_profile].shares[i];
 		}
 		return shares;
@@ -221,22 +231,42 @@ contract DonationBox is Ownable {
 		return shares;
 	}
 
-	function contractBalance() public view returns (uint) {
-		return address(this).balance;
+	//Public getters
+	
+	function getProfileCharities() public view returns (address[5]) {
+		return getProfileCharities(msg.sender);
 	}
 
-	//Balance that is not a part of the donation pool
-	function withdrawableBalance() onlyOwner public view returns (uint) {
-		return address(this).balance - donationBalance;
+	function getProfileShares() public view returns (uint8[5]) {
+		return getProfileShares(msg.sender);
 	}
 
-	//Withdraw balance that is no a part of the donation pool
-	function withdrawExcess() onlyOwner public {
-		uint excess = address(this).balance - donationBalance;
-		require(excess >= 0);
+	function getProfileCharities(address _profile) public view returns (address[5]) {
+		return profiles[_profile].charities;
+	}
 
-		msg.sender.transfer(excess);
-		emit EthWithdrawn(excess, msg.sender);
+	function getProfileShares(address _profile) public view returns (uint8[5]) {
+		return profiles[_profile].shares;
+	}
+
+	function getContractBalance() public view returns (uint96) {
+		return uint96(address(this).balance);
+	}
+
+	//Balance that is not part of the donation funds
+	function getExcess() public view returns (uint96) {
+		return uint96(address(this).balance) - donationBalance;
+	}
+
+	//Admin
+
+	//Balance that is not part of the donation funds
+	function sweepExcess() public {
+		uint96 excess = uint96(address(this).balance) - donationBalance;
+		require(excess > 0, "No excess funds to sweep");
+
+		owner.transfer(excess);
+		emit EthWithdrawn(excess, owner);
 	}
 
 	//Permanently remove temporary escape
@@ -248,7 +278,7 @@ contract DonationBox is Ownable {
 	function selfDestruct() onlyOwner public {
 		require(canBeDestroyed, "Can no longer be destroyed, sorry");
 
-		emit ContractKilled(address(this).balance, msg.sender);
+		emit ContractKilled(uint96(address(this).balance), msg.sender);
 		selfdestruct(owner);
 	}
 
