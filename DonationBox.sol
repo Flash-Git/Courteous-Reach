@@ -1,11 +1,13 @@
 pragma solidity 0.4.24;
 
 contract DonationBox is Ownable {
-	/*TODO
-	-Pack values into 256bit slots (with overflow checks)
-	-Implement safemath in some places
-	-
+	/*
+	* TODO
+	* Gas optimisations
+	* Tests
+	* Over/Underflow checks
 	*/
+
     //Total donation ether (in wei) ready to send
 	uint248 public donationBalance;//storage?
 	uint8 public maxCharitiesPerProfile = 5;
@@ -52,7 +54,7 @@ contract DonationBox is Ownable {
 	function validateCharity(address _charity) onlyOwner public {
 	    require(charities[_charity].index == 0, "Attempting to validate a valid charity");
 		validCharities.push(_charity);
-		charities[_charity].index = validCharities.length-1;
+		charities[_charity].index = uint16(validCharities.length-1);
 		emit CharityValidated(_charity);
 	}
 
@@ -133,8 +135,8 @@ contract DonationBox is Ownable {
 		require(msg.value > 0, "Donation requires more than 0");
 		checkCharity(_charity);
 		charities[_charity].balance += uint240(msg.value);
-		assert(donationBalance + uint248(msg.value) > donationBalance);//fatal
-		donationBalance += uint248(msg.value);
+		assert(donationBalance + msg.value > donationBalance);//fatal
+		donationBalance += uint240(msg.value);
 		emit EthReceived(msg.sender, msg.value, _charity);
 	}
 
@@ -157,16 +159,16 @@ contract DonationBox is Ownable {
 		}
 		require(getTotalShares(_profile) > 0, "Profile requires more than 0 shares");//This logic seems suboptimal
 
-		uint donated;
+		uint240 donated;
 		for(uint8 i = 0; i < profiles[_profile].charities.length; i++){
 			checkCharity(profiles[_profile].charities[i]);
-			uint donateAmt = msg.value * profiles[_profile].shares[i] / getTotalShares(_profile);
+			uint240 donateAmt = uint240(msg.value) * profiles[_profile].shares[i] / getTotalShares(_profile);
 			charities[profiles[_profile].charities[i]].balance += donateAmt;
 			donated += donateAmt;
 			emit EthReceived(msg.sender, donateAmt, profiles[_profile].charities[i]);
 		}//Is creating a uint cheaper than increasing another uint x times?
-        charities[profiles[_profile].charities[0]].balance += (msg.value-donated);//catch lost eth
-		donated += (msg.value-donated);
+        charities[profiles[_profile].charities[0]].balance += (uint240(msg.value)-donated);//catch lost eth
+		donated += (uint240(msg.value)-donated);
 		assert(msg.value - donated == 0);
 		assert(donationBalance + donated > donationBalance);//fatal
 		donationBalance += donated;
@@ -176,7 +178,7 @@ contract DonationBox is Ownable {
 	function payoutAllCharities(uint _minimumPayout) public {
 		for(uint16 i = 0; i < validCharities.length; i++){
 			checkCharity(validCharities[i]);
-			uint amtToPayout = charities[validCharities[i]].balance; 
+			uint240 amtToPayout = charities[validCharities[i]].balance; 
 			if(amtToPayout < _minimumPayout || amtToPayout == 0){
 				continue;
 			}
@@ -191,7 +193,7 @@ contract DonationBox is Ownable {
 	//Force payout an individual charity
 	function payoutCharity(address _charity) public {
 		checkCharity(_charity);
-		uint amtToPayout = charities[_charity].balance;
+		uint240 amtToPayout = charities[_charity].balance;
 		charities[_charity].balance = 0;
 		assert(donationBalance - amtToPayout < donationBalance);//fatal
 	    donationBalance -= amtToPayout;
