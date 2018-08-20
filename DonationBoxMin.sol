@@ -1,6 +1,9 @@
 pragma solidity 0.4.24;
 
 /*
+* Courteous-Reach
+* ===============
+
 * Author: Flash
 * Date: 20/08/2018
 * Version: 1.0
@@ -139,7 +142,7 @@ contract DonationBox is Ownable {
 
 		for(uint8 i = 0; i < profileSize; i++){
 			if(profiles[msg.sender].shares[i] == 0){
-				modifyProfileCharity(i, _charity, _share);
+				profileModC(i, _charity, _share);
 				return;
 			}
 		}
@@ -169,10 +172,10 @@ contract DonationBox is Ownable {
 		require(_charities.length == _shares.length, "Incompatible array sizes");
 
 		for(uint8 i = 0; i < _charities.length; i++){
-			modifyProfileCharity(i, _charities[i], _shares[i]);
+			profileModC(i, _charities[i], _shares[i]);
 		}
 		for(i = uint8(_charities.length); i < profileSize; i++){//Reinitialise i in 0.5.0
-			nullifyProfileCharity(i);
+			profileNulC(i);
 		}
 	}
 
