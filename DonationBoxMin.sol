@@ -9,22 +9,46 @@ pragma solidity 0.4.24;
 contract DonationBox is Ownable {
 	/*
 	* TODO
+	*
 	* Gas optimisations
+	*	Tight packing solutions
+	*	Manual optimisation
+	*
 	* Tests
-	* Over/Underflow checks
+	*
+	* Research
+	*	optimal profileSize
+	*	necessary features
+	*	necessary events
+	*
+	* Default profiles?
+	* ENS
+	* ERC20 tokens
+	* NFTYs (potentially)
+	*/
+
+
+	/*
+	* Storage
 	*/
 
 	//Total donation ether (in wei) ready to send
 	uint96 public donationBalance;//storage?
 	uint8 public profileSize = 5;
+	//address public defaultProfile;
 	//Temporary escape bool for the entire contract
-	bool internal canBeDestroyed = true;
+	bool private canBeDestroyed = true;
 	//Every address is a potential charity
 	mapping(address => charity) public charities;
 	//Every address has a donation profile
-	mapping(address => profile) internal profiles;//can't be public?
+	mapping(address => profile) private profiles;//can't be public?
 	//Array of valid charities, can handle up to 2**16 of them
 	address[] public validCharities;//is not functionally 0 based TODO handle unlimited size
+
+
+	/*
+	* Structs
+	*/
 
 	//Donations done with profile are split between the chosen charities based on shares      
 	struct profile {
@@ -39,7 +63,11 @@ contract DonationBox is Ownable {
 		uint96 balance;
 	}
 
-	//Logging
+
+	/*
+	* Events
+	*/
+
 	event EthReceived(address _from, uint96 _amount, address indexed _charity);
 	event EthSent(uint96 _amount, address indexed _to);
 	event EthWithdrawn(uint96 _amount, address indexed _to);
@@ -48,12 +76,31 @@ contract DonationBox is Ownable {
 	event ProfileModified(address indexed _profile, uint8 _index, address indexed _charity, uint8 _shares);
 	event ContractKilled(uint96 _amount, address indexed _to);
 
-	//Initial conditions
+
+	/*
+	* Constructor
+	*/
+
 	//Validate charities and create initial profiles in here before launch
 	constructor() public {
 		validCharities.push(address(0));//dummy charity to take up profiles[profile].charities[0]
 		validateCharity(owner);
 	}
+
+
+	/*
+	* Fallback function
+	*/
+
+	//Doesn't update donator's balance
+	function() public payable {
+		emit EthReceived(msg.sender, uint96(msg.value), address(this));//TODO understand gas cost fluctuations
+	}
+
+
+	/*
+	* Validation methods
+	*/
 
 	//Careful with number of validated charities
 	//If the number gets too large, perhaps set other contracts as proxy donation addresses to cheapen the cost of looping
@@ -81,34 +128,13 @@ contract DonationBox is Ownable {
 		emit CharityInvalidated(_charity);
 	}
 
-	function setProfile(address[] _charities, uint8[] _shares) public {
-		require(_charities.length <= profileSize, "Invalid number of charities");
-		require(_charities.length == _shares.length, "Incompatible array sizes");
 
-		for(uint8 i = 0; i < _charities.length; i++){
-			modifyProfileCharity(i, _charities[i], _shares[i]);
-		}
-		for(i = uint8(_charities.length); i < profileSize; i++){//Reinitialise i in 0.5.0
-			nullifyProfileCharity(i);
-		}
-	}
-
-	function deleteProfile() public {
-		delete profiles[msg.sender];
-	}
-
-	//Modify charity on sender's profile, using _num prevents unwanted duplicates
-	function modifyProfileCharity(uint8 _num, address _charity, uint8 _share) public {//Max _share size is 255
-		require(_num < profileSize, "Attempting to edit outside of array");
-		checkCharity(_charity);
-
-		profiles[msg.sender].charities[_num] = _charity;
-		profiles[msg.sender].shares[_num] = _share;
-		emit ProfileModified(msg.sender, _num, _charity, _share);
-	}
+	/*
+	* Profile Methods
+	*/
 
 	//Add charity to sender's profile, will occupy first slot where shares == 0
-	function addProfileCharity(address _charity, uint8 _share) public {//Max _share size is 255
+	function profileAddC(address _charity, uint8 _share) public {//Max _share size is 255
 		require(_share > 0, "Shares must be larger than 0");
 
 		for(uint8 i = 0; i < profileSize; i++){
@@ -120,26 +146,48 @@ contract DonationBox is Ownable {
 		revert("No space for new charity on profile");
 	}
 
+	//Modify charity on sender's profile, using _num prevents unwanted duplicates
+	function profileModC(uint8 _num, address _charity, uint8 _share) public {//Max _share size is 255
+		require(_num < profileSize, "Attempting to edit outside of array");
+		checkCharity(_charity);
+
+		profiles[msg.sender].charities[_num] = _charity;
+		profiles[msg.sender].shares[_num] = _share;
+		emit ProfileModified(msg.sender, _num, _charity, _share);
+	}
+
 	//Nullify charity on sender's profile by setting shares to 0
-	function nullifyProfileCharity(uint8 _num) public {
+	function profileNulC(uint8 _num) public {
 		require(_num < profileSize, "Attempting to edit outside of array");
 
 		profiles[msg.sender].shares[_num] = 0;
 		emit ProfileModified(msg.sender, _num, profiles[msg.sender].charities[_num], 0);
 	}
 
-	function copyProfileFrom(address _from) public {
+	function profileSet(address[] _charities, uint8[] _shares) public {
+		require(_charities.length <= profileSize, "Invalid number of charities");
+		require(_charities.length == _shares.length, "Incompatible array sizes");
+
+		for(uint8 i = 0; i < _charities.length; i++){
+			modifyProfileCharity(i, _charities[i], _shares[i]);
+		}
+		for(i = uint8(_charities.length); i < profileSize; i++){//Reinitialise i in 0.5.0
+			nullifyProfileCharity(i);
+		}
+	}
+
+	function profileCopy(address _from) public {
 		profiles[msg.sender] = profiles[_from];
 	}
 
-	function resetProfile() public {
+	function profileReset() public {
 		delete profiles[msg.sender];
 	}
 
-	//Doesn't update donator's balance
-	function() public payable {
-		emit EthReceived(msg.sender, uint96(msg.value), address(this));//I don't know why this gas cost fluctuates
-	}
+
+	/*
+	* Donation methods
+	*/
 
 	//Donate directly
 	function donateTo(address _charity) public payable {
@@ -180,6 +228,23 @@ contract DonationBox is Ownable {
 		donationBalance += donated;
 	}
 
+
+	/*
+	* Payout methods
+	*/
+	
+	//Force payout an individual charity
+	function payoutCharity(address _charity) public {
+		checkCharity(_charity);
+
+		uint96 amtToPayout = charities[_charity].balance;
+		charities[_charity].balance = 0;
+		assert(donationBalance - amtToPayout < donationBalance);//fatal
+		donationBalance -= amtToPayout;
+		_charity.transfer(amtToPayout);
+		emit EthSent(amtToPayout, _charity);
+	}
+
 	//Payout all valid charities
 	function payoutAllCharities(uint _minimumPayout) public {
 		for(uint16 i = 1; i < validCharities.length; i++){
@@ -197,19 +262,12 @@ contract DonationBox is Ownable {
 		}
 	}
 
-	//Force payout an individual charity
-	function payoutCharity(address _charity) public {
-		checkCharity(_charity);
 
-		uint96 amtToPayout = charities[_charity].balance;
-		charities[_charity].balance = 0;
-		assert(donationBalance - amtToPayout < donationBalance);//fatal
-		donationBalance -= amtToPayout;
-		_charity.transfer(amtToPayout);
-		emit EthSent(amtToPayout, _charity);
-	}
+	/*
+	* Private getters
+	*/
 
-	function checkCharity(address _charity) view private {
+	function checkCharity(address _charity) private view {
 		require(charities[_charity].index != 0, "Invalid charity");
 	}
 
@@ -231,7 +289,10 @@ contract DonationBox is Ownable {
 		return shares;
 	}
 
-	//Public getters
+
+	/*
+	* Public getters
+	*/
 	
 	function getProfileCharities() public view returns (address[5]) {
 		return getProfileCharities(msg.sender);
@@ -258,7 +319,10 @@ contract DonationBox is Ownable {
 		return uint96(address(this).balance) - donationBalance;
 	}
 
-	//Admin
+
+	/*
+	* Admin methods
+	*/
 
 	//Balance that is not part of the donation funds
 	function sweepExcess() public {
