@@ -5,7 +5,7 @@ pragma solidity 0.4.24;
 * ===============
 
 * Author: Flash
-* Date: 20/08/2018
+* Date: 21/08/2018
 * Version: 1.0
 */
 
@@ -251,17 +251,9 @@ contract DonationBox is Ownable {
 	//Payout all valid charities
 	function payoutAllCharities(uint _minimumPayout) public {
 		for(uint16 i = 1; i < validCharities.length; i++){
-			checkCharity(validCharities[i]);
-
-			uint96 amtToPayout = charities[validCharities[i]].balance; 
-			if(amtToPayout < _minimumPayout || amtToPayout == 0){
-				continue;
+			if(_minimumPayout <= charities[validCharities[i]].balance && charities[validCharities[i]].balance != 0){
+				payoutCharity(validCharities[i])
 			}
-			charities[validCharities[i]].balance = 0;
-			assert(donationBalance - amtToPayout < donationBalance);//fatal
-			donationBalance -= amtToPayout;
-			validCharities[i].transfer(amtToPayout);
-			emit EthSent(amtToPayout, validCharities[i]);
 		}
 	}
 
