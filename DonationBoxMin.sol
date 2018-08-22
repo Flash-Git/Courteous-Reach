@@ -5,7 +5,7 @@ pragma solidity 0.4.24;
 * ===============
 
 * Author: Flash
-* Date: 21/08/2018
+* Date: 22/08/2018
 * Version: 1.0
 */
 
@@ -210,6 +210,7 @@ contract DonationBox is Ownable {
 	//Donate through another's profile
 	function donateWithProfile(address _profile) public payable {
 		require(msg.value > 0, "Donation must be larger than 0");
+		//Donations must also be smaller than 310698676526526814092329217 Wei (310,698,676 Ether)
 		uint16 totalShares = getTotalShares(_profile);
 		require(getTotalShares(_profile) > 0, "Profile requires more than 0 shares");
 
@@ -252,7 +253,7 @@ contract DonationBox is Ownable {
 	function payoutAllCharities(uint _minimumPayout) public {
 		for(uint16 i = 1; i < validCharities.length; i++){
 			if(_minimumPayout <= charities[validCharities[i]].balance && charities[validCharities[i]].balance != 0){
-				payoutCharity(validCharities[i])
+				payoutCharity(validCharities[i]);
 			}
 		}
 	}
