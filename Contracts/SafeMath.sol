@@ -5,8 +5,8 @@ pragma solidity 0.4.24;
 library SafeMath {
 	function mul(uint256 _a, uint256 _b) internal pure returns (uint256) {
 		//Cheaper to test only one input
-		if(_a == 0){
-	  		return 0;
+		if (_a == 0) {
+			return 0;
 		}
 		uint256 c = _a * _b;
 		require(c / _a == _b);

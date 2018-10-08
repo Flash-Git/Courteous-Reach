@@ -86,7 +86,8 @@ contract DonationBox is Ownable {
 
 	//Validate charities and create initial profiles in here before launch
 	constructor() public {
-		validCharities.push(address(0));//dummy charity to take up profiles[profile].charities[0]
+		validCharities.push(address(0));
+		//dummy charity to take up profiles[profile].charities[0]
 		validateCharity(owner);
 	}
 
@@ -97,7 +98,8 @@ contract DonationBox is Ownable {
 
 	//Doesn't update donator's balance
 	function() public payable {
-		emit EthReceived(msg.sender, uint96(msg.value), address(this));//TODO understand gas cost fluctuations
+		emit EthReceived(msg.sender, uint96(msg.value), address(this));
+		//TODO understand gas cost fluctuations
 	}
 
 
@@ -109,10 +111,11 @@ contract DonationBox is Ownable {
 	//If the number gets too large, perhaps set other contracts as proxy donation addresses to cheapen the cost of looping
 	function validateCharity(address _charity) onlyOwner public {
 		require(charities[_charity].index == 0, "Attempting to validate a valid charity");
-		require(validCharities.length < 65536-1, "Array of valid charities is full");//TODO check overflow
+		require(validCharities.length < 65536 - 1, "Array of valid charities is full");
+		//TODO check overflow
 
 		validCharities.push(_charity);
-		charities[_charity].index = uint16(validCharities.length-1);
+		charities[_charity].index = uint16(validCharities.length - 1);
 		emit CharityValidated(_charity);
 	}
 
@@ -120,9 +123,9 @@ contract DonationBox is Ownable {
 		require(charities[_charity].index != 0, "Attempting to invalidate an invalid charity");
 
 		//Set index of last charity in validCharities to the index of invalidatedCharity
-		charities[validCharities[validCharities.length-1]].index = charities[_charity].index;
+		charities[validCharities[validCharities.length - 1]].index = charities[_charity].index;
 		//Replace invalidatedCharity with last charity in validCharities
-		validCharities[charities[_charity].index] = validCharities[validCharities.length-1];
+		validCharities[charities[_charity].index] = validCharities[validCharities.length - 1];
 		//Shorten length of validCharities to delete the last charity
 		validCharities.length--;
 
@@ -140,8 +143,8 @@ contract DonationBox is Ownable {
 	function profileAddC(address _charity, uint8 _share) public {//Max _share size is 255
 		require(_share > 0, "Shares must be larger than 0");
 
-		for(uint8 i = 0; i < profileSize; i++){
-			if(profiles[msg.sender].shares[i] == 0){
+		for (uint8 i = 0; i < profileSize; i++) {
+			if (profiles[msg.sender].shares[i] == 0) {
 				profileModC(i, _charity, _share);
 				return;
 			}
@@ -171,10 +174,10 @@ contract DonationBox is Ownable {
 		require(_charities.length <= profileSize, "Invalid number of charities");
 		require(_charities.length == _shares.length, "Incompatible array sizes");
 
-		for(uint8 i = 0; i < _charities.length; i++){
+		for (uint8 i = 0; i < _charities.length; i++) {
 			profileModC(i, _charities[i], _shares[i]);
 		}
-		for(i = uint8(_charities.length); i < profileSize; i++){//Reinitialise i in 0.5.0
+		for (i = uint8(_charities.length); i < profileSize; i++) {//Reinitialise i in 0.5.0
 			profileNulC(i);
 		}
 	}
@@ -215,20 +218,24 @@ contract DonationBox is Ownable {
 		require(getTotalShares(_profile) > 0, "Profile requires more than 0 shares");
 
 		uint96 donated;
-		for(uint8 i = 0; i < profileSize; i++){
+		for (uint8 i = 0; i < profileSize; i++) {
 			checkCharity(profiles[_profile].charities[i]);
-			uint96 donateAmt = uint96(msg.value) * profiles[_profile].shares[i] / getTotalShares(_profile);//TODO verify overflow
+			uint96 donateAmt = uint96(msg.value) * profiles[_profile].shares[i] / getTotalShares(_profile);
+			//TODO verify overflow
 			charities[profiles[_profile].charities[i]].balance += donateAmt;
 			donated += donateAmt;
 			emit EthReceived(msg.sender, donateAmt, profiles[_profile].charities[i]);
-			if((totalShares-=profiles[_profile].shares[i]) == 0){//Exit loop early if end of profile shares == 0
+			if ((totalShares -= profiles[_profile].shares[i]) == 0) {//Exit loop early if end of profile shares == 0
 				break;
 			}
-		}//Is creating a uint cheaper than increasing another uint x times?
-		charities[profiles[_profile].charities[0]].balance += (uint96(msg.value)-donated);//catch lost eth
-		donated += (uint96(msg.value)-donated);
+		}
+		//Is creating a uint cheaper than increasing another uint x times?
+		charities[profiles[_profile].charities[0]].balance += (uint96(msg.value) - donated);
+		//catch lost eth
+		donated += (uint96(msg.value) - donated);
 		require(msg.value - donated == 0);
-		assert(donationBalance + donated > donationBalance);//fatal
+		assert(donationBalance + donated > donationBalance);
+		//fatal
 		donationBalance += donated;
 	}
 
@@ -236,14 +243,15 @@ contract DonationBox is Ownable {
 	/*
 	* Payout methods
 	*/
-	
+
 	//Force payout an individual charity
 	function payoutCharity(address _charity) public {
 		checkCharity(_charity);
 
 		uint96 amtToPayout = charities[_charity].balance;
 		charities[_charity].balance = 0;
-		assert(donationBalance - amtToPayout < donationBalance);//fatal
+		assert(donationBalance - amtToPayout < donationBalance);
+		//fatal
 		donationBalance -= amtToPayout;
 		_charity.transfer(amtToPayout);
 		emit EthSent(amtToPayout, _charity);
@@ -251,8 +259,8 @@ contract DonationBox is Ownable {
 
 	//Payout all valid charities
 	function payoutAllCharities(uint _minimumPayout) public {
-		for(uint16 i = 1; i < validCharities.length; i++){
-			if(_minimumPayout <= charities[validCharities[i]].balance && charities[validCharities[i]].balance != 0){
+		for (uint16 i = 1; i < validCharities.length; i++) {
+			if (_minimumPayout <= charities[validCharities[i]].balance && charities[validCharities[i]].balance != 0) {
 				payoutCharity(validCharities[i]);
 			}
 		}
@@ -269,7 +277,7 @@ contract DonationBox is Ownable {
 
 	function getTotalShares(address _profile) private view returns (uint16) {
 		uint16 shares;
-		for(uint8 i = 0; i < profileSize; i++){
+		for (uint8 i = 0; i < profileSize; i++) {
 			shares += profiles[_profile].shares[i];
 		}
 		return shares;
@@ -279,7 +287,7 @@ contract DonationBox is Ownable {
 		require(_shares.length <= profileSize, "Array too large");
 
 		uint16 shares;
-		for(uint8 i = 0; i < _shares.length; i++){
+		for (uint8 i = 0; i < _shares.length; i++) {
 			shares += _shares[i];
 		}
 		return shares;
@@ -289,7 +297,7 @@ contract DonationBox is Ownable {
 	/*
 	* Public getters
 	*/
-	
+
 	function getProfileCharities() public view returns (address[5]) {
 		return getProfileCharities(msg.sender);
 	}

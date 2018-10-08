@@ -1,35 +1,35 @@
 pragma solidity 0.4.24;
 
 contract Ownable {
-  //Forked from OpenZeppelin
-  
-  address public owner;
+	//Forked from OpenZeppelin
 
-  event OwnershipRenounced(address indexed previousOwner);
-  event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+	address public owner;
 
-  constructor() public {
-    owner = msg.sender;
-  }
+	event OwnershipRenounced(address indexed previousOwner);
+	event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
-  modifier onlyOwner() {
-    require(msg.sender == owner, "Not the owner");
-    _;
-  }
+	constructor() public {
+		owner = msg.sender;
+	}
 
-  function renounceOwnership() public onlyOwner {
-    emit OwnershipRenounced(owner);
-    owner = address(0);
-  }
+	modifier onlyOwner() {
+		require(msg.sender == owner, "Not the owner");
+		_;
+	}
 
-  function transferOwnership(address _newOwner) public onlyOwner {
-    _transferOwnership(_newOwner);
-  }
+	function renounceOwnership() public onlyOwner {
+		emit OwnershipRenounced(owner);
+		owner = address(0);
+	}
 
-  //why not put this in transferOwnership?
-  function _transferOwnership(address _newOwner) internal {
-    require(_newOwner != address(0));
-    emit OwnershipTransferred(owner, _newOwner);
-    owner = _newOwner;
-  }
+	function transferOwnership(address _newOwner) public onlyOwner {
+		_transferOwnership(_newOwner);
+	}
+
+	//why not put this in transferOwnership?
+	function _transferOwnership(address _newOwner) internal {
+		require(_newOwner != address(0));
+		emit OwnershipTransferred(owner, _newOwner);
+		owner = _newOwner;
+	}
 }
