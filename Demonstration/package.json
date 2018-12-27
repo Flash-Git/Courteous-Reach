@@ -1,0 +1,37 @@
+{
+  "name": "courteous-reach",
+  "version": "1.0.0",
+  "description": "Demonstrative implementation of the courteous-reach contract",
+  "main": "server.js",
+  "scripts": {
+    "client-install": "npm install --prefix client",
+    "start": "node server.js",
+    "server": "nodemon server.js",
+    "client": "npm start --prefix client",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "heroku-postbuild": "NPM_CONFIG_PRODUCTION=false npm install --prefix client && npm run build --prefix client"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Flash-Git/Courteous-Reach.git"
+  },
+  "keywords": [
+    "Ethereum",
+    "MERN",
+    "Solidity"
+  ],
+  "author": "Flash",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Flash-Git/Courteous-Reach/issues"
+  },
+  "homepage": "https://github.com/Flash-Git/Courteous-Reach#readme",
+  "dependencies": {
+    "concurrently": "^4.1.0",
+    "express": "^4.16.4",
+    "mongoose": "^5.4.1"
+  },
+  "devDependencies": {
+    "nodemon": "^1.18.9"
+  }
+}
