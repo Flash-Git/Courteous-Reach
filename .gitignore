@@ -85,7 +85,7 @@ typings/
 # next.js build output
 .next
 
-config/keys.js
+config/
 
 .vscode/
 
